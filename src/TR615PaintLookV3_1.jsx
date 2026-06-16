@@ -2317,17 +2317,21 @@ export default function App() {
             boxSizing: "border-box" 
           }}>
             
-            {/* 頂部層級控制列 - 儲存場景行為與狀態 */}
+            {/* 2026-06-16 修改註記：固定高度並設定 flexWrap: "nowrap"，防止 isDirty 改變時因按鈕彈出或折行導致頂部列高度跳動 */}
             <div id="aver-adjustments-top-bar" style={{
               display: "flex",
               alignItems: "center",
               justifyContent: "space-between",
-              padding: "10px 20px",
+              padding: "0 20px",
+              height: 48,
+              minHeight: 48,
+              maxHeight: 48,
               borderBottom: `1px solid ${T.line}`,
               background: "rgba(0, 0, 0, 0.15)",
               flexShrink: 0,
               gap: 16,
-              flexWrap: "wrap"
+              flexWrap: "nowrap",
+              boxSizing: "border-box"
             }}>
               <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                 <span style={{ fontSize: 14, fontWeight: 600, color: T.dim }}>當前場景狀態：</span>
