@@ -944,8 +944,11 @@ export default function App() {
   // [聚焦態 草稿] 雷達色環點進某軸後,Hue/Sat 先存草稿,色環即時預覽;按「確定」才寫入 st。
   const [draftHue, setDraftHue] = useState(0);
   const [draftSat, setDraftSat] = useState(0);
-  const enterFocus = (a) => { if (!st.multiOn) return; setSelAxis(a); setDraftHue(st.axes[a].hue); setDraftSat(st.axes[a].sat); setIsFocused(true); };
-  const confirmFocus = () => { updAxis(selAxis, "hue", draftHue); updAxis(selAxis, "sat", draftSat); setIsFocused(false); };
+  const [focusClosing, setFocusClosing] = useState(false); // 退出聚焦態的退場動畫旗標
+  const enterFocus = (a) => { if (!st.multiOn) return; setSelAxis(a); setDraftHue(st.axes[a].hue); setDraftSat(st.axes[a].sat); setFocusClosing(false); setIsFocused(true); };
+  // 退出聚焦態:先播退場動畫(~380ms)再真正卸載
+  const closeFocus = () => { setFocusClosing(true); setTimeout(() => { setIsFocused(false); setFocusClosing(false); }, 380); };
+  const confirmFocus = () => { updAxis(selAxis, "hue", draftHue); updAxis(selAxis, "sat", draftSat); closeFocus(); };
   // [2D 拖曳] 聚焦態拖環上的 focus 圓圈:繞圈 → Hue(±22.5°對映±99)、進出半徑 → Saturation。
   const ringRef = useRef(null);
   const ringDragRef = useRef(false);
@@ -1503,9 +1506,8 @@ export default function App() {
       // [A+C 強化] 是否有任一軸被調整過 → 用來「讓調過的浮出、沒調過的降存在感」(三種樣式共用)
       const anyTouched = AXIS16.some((a) => st.axes[a].hue !== 0 || st.axes[a].sat !== 0);
       const touchedCount = AXIS16.filter((a) => st.axes[a].hue !== 0 || st.axes[a].sat !== 0).length;
-      // 16 軸等分色相環,每軸 22.5°,R 軸在環頂 (0°)
+      // 6 軸等分色相環,每軸 60°,R 軸在環頂 (0°)
       const angUI = {};
-      // 2026-06-16 修改註記：配合 6 軸 (間距 60°)，每軸等分由 22.5° 改為 60°，fHue 偏移改為 ±30°
       AXIS16.forEach((a, i) => { const idxR = AXIS16.indexOf("R"); angUI[a] = ((i - idxR) * 60 + 360) % 360; });
 
       // 聚焦態:整個環即時反映「草稿」的 Hue/Sat(尚未寫入 st,按確定才套用)
@@ -1545,17 +1547,17 @@ export default function App() {
 
             {multiStyle === "wheel" ? (
               <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center", width: "100%" }}>
-                {/* 2026-06-16 修改註記：配合 Chrome 100% 下防裁切，將 gap 由 24 縮小為 10 */}
                 {/* === 雷達色環:選擇態(6軸) ↔ 聚焦態(單軸) === */}
                 {/* 2026-06-16 修改註記：配合 Chrome 100% 縮放狀態下能完整顯現色相環，外層容器調整為 230px 並以 scale(0.78) 縮小顯示以防底部被裁切 */}
                 <div style={{ display: "flex", justifyContent: "center", alignItems: "center", width: 230, height: 230, flexShrink: 0, overflow: "visible" }}>
-                  <div ref={ringRef} 
-                    onClick={(e) => { if (!mOff && !isFocused) setSelAxis(null); }}
-                    style={{ position: "relative", width: 290, height: 290, flexShrink: 0, transform: "scale(0.78)", transformOrigin: "center center", overflow: "visible" }}
-                  >
+                  <div style={{ display: "flex", justifyContent: "center", alignItems: "center", flexShrink: 0, overflow: "visible" }}>
+                    <div ref={ringRef} 
+                      onClick={(e) => { if (!mOff && !isFocused) setSelAxis(null); }}
+                      style={{ position: "relative", width: 290, height: 290, flexShrink: 0, transform: "scale(0.78)", transformOrigin: "center center", overflow: "visible" }}
+                    >
                   {/* [聚焦進場] 從中心射向環的擴張光環(每次選軸重播);發光用徑向漸層自含,不溢出容器避免被裁切 */}
                   {isFocused && (
-                    <div key={"burst-" + selAxis} style={{ position: "absolute", left: "50%", top: "50%", width: 150, height: 150, borderRadius: "50%", border: `2px solid hsl(${fHue} 85% 62%)`, background: `radial-gradient(circle, transparent 56%, hsl(${fHue} 85% 60% / .45) 70%, transparent 82%)`, transform: "translate(-50%,-50%)", animation: "averBurst .88s cubic-bezier(0.16, 1, 0.3, 1) both", pointerEvents: "none", zIndex: 7 }} />
+                    <div key={"burst-" + selAxis} style={{ position: "absolute", left: "50%", top: "50%", width: 150, height: 150, borderRadius: "50%", border: `2px solid hsl(${fHue} 85% 62%)`, background: `radial-gradient(circle, transparent 56%, hsl(${fHue} 85% 60% / .45) 70%, transparent 82%)`, transform: "translate(-50%,-50%)", animation: focusClosing ? "averBurstOut .24s ease-in both" : "averBurst .88s cubic-bezier(0.16, 1, 0.3, 1) both", pointerEvents: "none", zIndex: 7 }} />
                   )}
                   {/* 外圍發光背景 (模糊層) - 採用雙圖層 Cross-fade 以免 conic-gradient 漸變生硬閃爍 */}
                   <div style={{ position: "absolute", inset: 16, borderRadius: "50%", background: ringSelect, filter: "blur(18px)", opacity: isFocused ? 0 : 0.22, transition: "opacity 0.58s cubic-bezier(0.16, 1, 0.3, 1)" }} />
@@ -1644,7 +1646,7 @@ export default function App() {
                             <stop offset="100%" stopColor="rgba(255,255,255,0)" />
                           </radialGradient>
                         </defs>
-                        <g className="aver-sector-in" filter="url(#sectorLift)">
+                        <g className={focusClosing ? "aver-sector-out" : "aver-sector-in"} filter="url(#sectorLift)">
                           {/* 鮮明彩虹色相漸層(密切片拼接,同選擇態配方) */}
                           {slices.map((s, i) => <path key={i} d={s.d} fill={s.fill} />)}
                           {/* 僅加頂部受光高光,不壓暗,保持鮮亮 */}
@@ -1669,7 +1671,7 @@ export default function App() {
                     const touched = st.axes[a].hue !== 0 || st.axes[a].sat !== 0;
                     // [C] 有調整過的軸存在時,未調整且未選中的節點降存在感(縮小+變淡),讓調過的浮出
                     const dim = !isFocused && anyTouched && !touched && !isSel;
-                    const sz = isSel ? 34 : touched ? 28 : dim ? 18 : 24;
+                    const sz = isSel ? 48 : touched ? 42 : dim ? 30 : 38;
                     return (
                       <button key={a}
                         onClick={isDragNode ? undefined : (e) => { e.stopPropagation(); enterFocus(a); }}
@@ -1682,17 +1684,17 @@ export default function App() {
                           cursor: mOff ? "default" : isDragNode ? "grab" : hide ? "default" : "pointer",
                           touchAction: isDragNode ? "none" : "auto",
                           background: `rgb(${r * 255},${g * 255},${b * 255})`,
-                          border: isSel ? "2px solid #fff" : touched ? `2px solid ${T.amber}` : "1px solid rgba(0,0,0,0.55)",
-                          boxShadow: isSel ? `0 0 18px hsl(${nodeHue} 90% 60% / 0.9)` : touched ? `0 0 10px ${T.amber}` : "none",
-                          fontSize: touched ? 13 : dim ? 10 : 13, fontFamily: fMono, fontWeight: 700, color: "rgba(0,0,0,0.8)",
+                          border: isSel ? "2.5px solid #fff" : touched ? `2.5px solid ${T.amber}` : "2px solid rgba(255,255,255,0.85)",
+                          boxShadow: isSel ? `0 0 22px hsl(${nodeHue} 90% 60% / 0.95), 0 2px 6px rgba(0,0,0,0.5)` : touched ? `0 0 12px ${T.amber}, 0 2px 6px rgba(0,0,0,0.5)` : `0 2px 6px rgba(0,0,0,0.45)`,
+                          fontSize: touched ? 15 : dim ? 12 : 15, fontFamily: fMono, fontWeight: 800, color: "rgba(0,0,0,0.82)",
                           opacity: hide ? 0 : dim ? 0.4 : 1, pointerEvents: (mOff || hide) ? "none" : "auto",
                           transition: isDragNode ? "none" : "all 0.58s cubic-bezier(0.16, 1, 0.3, 1)", padding: 0, zIndex: isDragNode ? 25 : touched ? 12 : 10,
-                          animation: isDragNode ? "averNodeShoot .62s cubic-bezier(0.34, 1.56, 0.64, 1) both" : undefined,
+                          animation: isDragNode ? (focusClosing ? "averNodeRetreat .24s ease-in both" : "averNodeShoot .62s cubic-bezier(0.34, 1.56, 0.64, 1) both") : undefined,
                         }}>
                         {a}
                         {/* [A] 已調整記號:雜色背景中比外框更醒目 */}
                         {touched && !isSel && (
-                          <span style={{ position: "absolute", top: -3, right: -3, width: 11, height: 11, borderRadius: "50%", background: T.amber, border: "1.5px solid #0e1114", boxShadow: `0 0 5px ${T.amber}`, pointerEvents: "none" }} />
+                          <span style={{ position: "absolute", top: -4, right: -4, width: 13, height: 13, borderRadius: "50%", background: T.amber, border: "2px solid #0e1114", boxShadow: `0 0 6px ${T.amber}`, pointerEvents: "none" }} />
                         )}
                       </button>
                     );
@@ -1722,11 +1724,12 @@ export default function App() {
                   </div>
                 </div>
               </div>
+            </div>
 
                 <div style={{ flex: 1, minWidth: 240 }}>
                   {isFocused ? (
                     /* [聚焦態] 控制面板在環右側(並排) */
-                    <div className="aver-pop" style={{ background: "rgba(0,0,0,0.18)", border: `1px solid ${T.line}`, borderRadius: 10, padding: "14px 16px", boxSizing: "border-box" }}>
+                    <div className={focusClosing ? "aver-fade-out" : "aver-pop"} style={{ background: "rgba(0,0,0,0.18)", border: `1px solid ${T.line}`, borderRadius: 10, padding: "14px 16px", boxSizing: "border-box" }}>
                       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 12 }}>
                         <span style={{ fontSize: 15, color: T.text, fontWeight: 600 }}>調整 {selAxis} <span style={{ color: T.faint, fontWeight: 400, fontFamily: fMono, fontSize: 13 }}>· 基準 {Math.round(angUI[selAxis])}°</span></span>
                         {(draftHue !== ax.hue || draftSat !== ax.sat) && (
@@ -1740,7 +1743,7 @@ export default function App() {
                           style={{ flex: 1, padding: "9px 0", fontSize: 13.5, fontWeight: 600, cursor: mOff ? "default" : "pointer", borderRadius: 6, border: "none", background: mOff ? T.line : T.blue, color: mOff ? T.faint : "#fff", fontFamily: fUI }}>
                           確定
                         </button>
-                        <button onClick={() => setIsFocused(false)}
+                        <button onClick={closeFocus}
                           style={{ flex: 1, padding: "9px 0", fontSize: 13, cursor: "pointer", borderRadius: 6, border: `1px solid ${T.line2}`, background: "transparent", color: T.dim, fontFamily: fUI }}>
                           取消
                         </button>
@@ -2112,6 +2115,22 @@ export default function App() {
           to   { opacity: 1; transform: scale(1); }
         }
         .aver-sector-in { animation: averSectorIn .4s cubic-bezier(.2,.8,.3,1) both; transform-origin: 145px 145px; }
+        /* 退出聚焦態:扇區/節點退場 */
+        @keyframes averSectorOut {
+          from { opacity: 1; transform: scale(1); }
+          to   { opacity: 0; transform: scale(.9); }
+        }
+        @keyframes averNodeRetreat {
+          from { transform: translate(-50%,-50%) scale(1); opacity: 1; }
+          to   { transform: translate(-50%,-50%) scale(1.9); opacity: 0; }
+        }
+        @keyframes averBurstOut {
+          from { transform: translate(-50%,-50%) scale(1.4); opacity: .4; }
+          to   { transform: translate(-50%,-50%) scale(.6); opacity: 0; }
+        }
+        .aver-sector-out { animation: averSectorOut .24s ease-in both; transform-origin: 145px 145px; }
+        @keyframes averFadeOut { from { opacity: 1; transform: translateY(0); } to { opacity: 0; transform: translateY(4px); } }
+        .aver-fade-out { animation: averFadeOut .22s ease-in both; }
         /* 聚焦環底:快速會聚的脈衝光暈 */
         @keyframes averRingPulse {
           0%   { box-shadow: 0 0 0 0 rgba(255,255,255,.35); }
@@ -2163,7 +2182,7 @@ export default function App() {
           <div id="aver-content-wrapper" key="paint" className="aver-fade" style={{ display: "flex", flexDirection: "column", gap: 10, width: "100%", maxWidth: "1350px", margin: "0 auto", height: "100%", minHeight: 0 }}>
           
           {/* 1. LIVE 預覽與場景檔主控制台 */}
-          <div id="aver-preview-preset-panel" style={{ background: T.panel, border: `1px solid ${T.line}`, borderRadius: 10, padding: "14px 20px", display: "flex", flexDirection: "column", gap: 12, width: "100%", boxSizing: "border-box", flex: "1.25 1 0", minHeight: 0 }}>
+          <div id="aver-preview-preset-panel" style={{ background: T.panel, border: `1px solid ${T.line}`, borderRadius: 10, padding: "14px 20px", display: "flex", flexDirection: "column", gap: 12, width: "100%", boxSizing: "border-box", flex: "1 1 0", minHeight: 0 }}>
             
             {/* 標題欄 */}
             <div id="aver-title-row" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 0, flexWrap: "wrap", gap: 8, flexShrink: 0 }}>
@@ -2288,7 +2307,7 @@ export default function App() {
             flexDirection: "column",
             gap: 0, 
             width: "100%", 
-            flex: "0.9 1 0", 
+            flex: "0 1 auto", 
             minHeight: 0,
             background: T.panel, 
             border: `1px solid ${T.line}`, 
@@ -2418,7 +2437,7 @@ export default function App() {
                 flexDirection: "column", 
                 alignSelf: "stretch" 
               }}>
-                <div style={{ flex: 1, overflowY: "auto", minHeight: 0, display: "flex", flexDirection: "column", gap: 8, paddingRight: 2 }}>
+                <div style={{ flex: 1, overflowY: "auto", minHeight: 0, display: "flex", flexDirection: "column", gap: 8, paddingRight: 2, scrollbarGutter: "stable" }}>
                   {BLOCKS.map(([id, lb]) => (
                     <button 
                       key={id} 
@@ -2450,7 +2469,7 @@ export default function App() {
                 flexDirection: "column", 
                 alignSelf: "stretch" 
               }}>
-                <div style={{ flex: 1, overflowY: "auto", minHeight: 0, paddingRight: 4 }}>
+                <div style={{ flex: 1, overflowY: "auto", minHeight: 0, paddingRight: 4, scrollbarGutter: "stable" }}>
                   {renderBlock()}
                 </div>
               </div>
