@@ -1544,11 +1544,11 @@ export default function App() {
             {multiStyle === "wheel" ? (
               <div style={{ display: "flex", gap: 24, flexWrap: "wrap", alignItems: "center", width: "100%" }}>
                 {/* === 雷達色環:選擇態(6軸) ↔ 聚焦態(單軸) === */}
-                {/* 2026-06-16 修改註記：配合 Chrome 100% 縮放狀態下能完整顯現色相環，外層容器調整為 250px 並以 scale(0.86) 縮小顯示 */}
-                <div style={{ display: "flex", justifyContent: "center", alignItems: "center", width: 250, height: 250, flexShrink: 0, overflow: "visible" }}>
+                {/* 2026-06-16 修改註記：配合 Chrome 100% 縮放狀態下能完整顯現色相環，外層容器調整為 230px 並以 scale(0.78) 縮小顯示以防底部被裁切 */}
+                <div style={{ display: "flex", justifyContent: "center", alignItems: "center", width: 230, height: 230, flexShrink: 0, overflow: "visible" }}>
                   <div ref={ringRef} 
                     onClick={(e) => { if (!mOff && !isFocused) setSelAxis(null); }}
-                    style={{ position: "relative", width: 290, height: 290, flexShrink: 0, transform: "scale(0.86)", transformOrigin: "center center" }}
+                    style={{ position: "relative", width: 290, height: 290, flexShrink: 0, transform: "scale(0.78)", transformOrigin: "center center", overflow: "visible" }}
                   >
                   {/* [聚焦進場] 從中心射向環的擴張光環(每次選軸重播);發光用徑向漸層自含,不溢出容器避免被裁切 */}
                   {isFocused && (
