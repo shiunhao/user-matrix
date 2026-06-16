@@ -1548,13 +1548,12 @@ export default function App() {
             {multiStyle === "wheel" ? (
               <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center", width: "100%" }}>
                 {/* === 雷達色環:選擇態(6軸) ↔ 聚焦態(單軸) === */}
-                {/* 2026-06-16 修改註記：配合 Chrome 100% 縮放狀態下能完整顯現色相環，外層容器調整為 230px 並以 scale(0.78) 縮小顯示以防底部被裁切 */}
-                <div style={{ display: "flex", justifyContent: "center", alignItems: "center", width: 230, height: 230, flexShrink: 0, overflow: "visible" }}>
-                  <div style={{ display: "flex", justifyContent: "center", alignItems: "center", flexShrink: 0, overflow: "visible" }}>
-                    <div ref={ringRef} 
-                      onClick={(e) => { if (!mOff && !isFocused) setSelAxis(null); }}
-                      style={{ position: "relative", width: 290, height: 290, flexShrink: 0, transform: "scale(0.78)", transformOrigin: "center center", overflow: "visible" }}
-                    >
+                {/* 2026-06-16 修改註記：配合 Chrome 100% 縮放狀態下能完整顯現色相環，外層容器調整為 210px，色環採 absolute 置中並以 scale(0.70) 縮小以防位置跳動與裁切 */}
+                <div style={{ display: "flex", justifyContent: "center", alignItems: "center", width: 210, height: 210, flexShrink: 0, position: "relative", overflow: "visible" }}>
+                  <div ref={ringRef} 
+                    onClick={(e) => { if (!mOff && !isFocused) setSelAxis(null); }}
+                    style={{ position: "absolute", left: "50%", top: "50%", transform: "translate(-50%, -50%) scale(0.70)", transformOrigin: "center center", width: 290, height: 290, flexShrink: 0, overflow: "visible" }}
+                  >
                   {/* [聚焦進場] 從中心射向環的擴張光環(每次選軸重播);發光用徑向漸層自含,不溢出容器避免被裁切 */}
                   {isFocused && (
                     <div key={"burst-" + selAxis} style={{ position: "absolute", left: "50%", top: "50%", width: 150, height: 150, borderRadius: "50%", border: `2px solid hsl(${fHue} 85% 62%)`, background: `radial-gradient(circle, transparent 56%, hsl(${fHue} 85% 60% / .45) 70%, transparent 82%)`, transform: "translate(-50%,-50%)", animation: focusClosing ? "averBurstOut .24s ease-in both" : "averBurst .88s cubic-bezier(0.16, 1, 0.3, 1) both", pointerEvents: "none", zIndex: 7 }} />
@@ -1724,7 +1723,6 @@ export default function App() {
                   </div>
                 </div>
               </div>
-            </div>
 
                 <div style={{ flex: 1, minWidth: 240 }}>
                   {isFocused ? (
@@ -2182,8 +2180,8 @@ export default function App() {
           <div id="aver-content-wrapper" key="paint" className="aver-fade" style={{ display: "flex", flexDirection: "column", gap: 10, width: "100%", maxWidth: "1350px", margin: "0 auto", height: "100%", minHeight: 0 }}>
           
           {/* 1. LIVE 預覽與場景檔主控制台 */}
-          {/* 2026-06-16 修改註記：配合各分頁面板高度一致，預覽區 flex 恢復為 1.25 */}
-          <div id="aver-preview-preset-panel" style={{ background: T.panel, border: `1px solid ${T.line}`, borderRadius: 10, padding: "14px 20px", display: "flex", flexDirection: "column", gap: 12, width: "100%", boxSizing: "border-box", flex: "1.25 1 0", minHeight: 0 }}>
+          {/* 2026-06-16 修改註記：配合各分頁面板高度一致且防止出現滾動條，預覽區 flex 比例微調為 1.15 */}
+          <div id="aver-preview-preset-panel" style={{ background: T.panel, border: `1px solid ${T.line}`, borderRadius: 10, padding: "14px 20px", display: "flex", flexDirection: "column", gap: 12, width: "100%", boxSizing: "border-box", flex: "1.15 1 0", minHeight: 0 }}>
             
             {/* 標題欄 */}
             <div id="aver-title-row" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 0, flexWrap: "wrap", gap: 8, flexShrink: 0 }}>
@@ -2308,8 +2306,8 @@ export default function App() {
             flexDirection: "column",
             gap: 0, 
             width: "100%", 
-            // 2026-06-16 修改註記：配合各分頁面板高度一致，調整區 flex 恢復為 0.9 1 0，不使用 auto 彈性高度
-            flex: "0.9 1 0", 
+            // 2026-06-16 修改註記：配合各分頁面板高度一致，將控制區 flex 設為 1 1 0 提升高度，不使用 auto 彈性高度
+            flex: "1 1 0", 
             minHeight: 0,
             background: T.panel, 
             border: `1px solid ${T.line}`, 
