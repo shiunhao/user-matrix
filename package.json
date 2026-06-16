@@ -3,7 +3,7 @@
   "private": true,
   "version": "0.0.0",
   "type": "module",
-  "homepage": "https://moss520.github.io/user-matrix",
+  "homepage": "https://shiunhao.github.io/user-matrix",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
