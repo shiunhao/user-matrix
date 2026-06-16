@@ -384,6 +384,86 @@ function Slider({ k, label, hint, min, max, val, onChange, neutral = 0, onStartD
 }
 
 /**
+ * 直立推桿組件 (VFader)
+ * 用於推桿台模式，利用 Pointer Events 實現無延遲、絲滑像素級跟手拖曳
+ */
+function VFader({ axis, kind, val, fillColor, mOff, updAxis, startDrag, endDrag }) {
+  const FH = 150; // 推桿高度
+  const center = FH / 2;
+  const amp = (val / 99) * (FH * 0.46);
+  const fillTop = amp >= 0 ? center - amp : center;
+  const fillH = Math.abs(amp);
+  const thumbY = center - amp;
+  const faderRef = useRef(null);
+  const dragActive = useRef(false);
+
+  const handlePointerDown = (e) => {
+    if (mOff) return;
+    e.preventDefault();
+    dragActive.current = true;
+    try {
+      e.currentTarget.setPointerCapture(e.pointerId);
+    } catch (err) {}
+    startDrag();
+    updateVal(e);
+  };
+
+  const handlePointerMove = (e) => {
+    if (!dragActive.current) return;
+    updateVal(e);
+  };
+
+  const handlePointerUp = (e) => {
+    if (!dragActive.current) return;
+    dragActive.current = false;
+    try {
+      e.currentTarget.releasePointerCapture(e.pointerId);
+    } catch (err) {}
+    endDrag();
+  };
+
+  const updateVal = (e) => {
+    if (!faderRef.current) return;
+    const rect = faderRef.current.getBoundingClientRect();
+    const yRel = e.clientY - rect.top; // 相對推桿頂部的 Y 座標
+    const rawVal = ((FH / 2 - yRel) / (FH / 2)) * 99;
+    const cleanVal = Math.max(-99, Math.min(99, Math.round(rawVal)));
+    updAxis(axis, kind, cleanVal);
+  };
+
+  return (
+    <div 
+      ref={faderRef}
+      onPointerDown={handlePointerDown}
+      onPointerMove={handlePointerMove}
+      onPointerUp={handlePointerUp}
+      style={{ 
+        position: "relative", 
+        width: 22, 
+        height: FH, 
+        cursor: mOff ? "not-allowed" : "ns-resize",
+        touchAction: "none"
+      }}
+    >
+      {/* 背景軌道 */}
+      <div style={{ position: "absolute", left: "50%", top: 0, transform: "translateX(-50%)", width: 7, height: "100%", borderRadius: 4, background: "#0a0c0e", boxShadow: "inset 0 0 4px rgba(0,0,0,0.8)" }} />
+      
+      {/* 中線刻度 */}
+      <div style={{ position: "absolute", left: 1, right: 1, top: center, height: 1, background: "rgba(255,255,255,0.18)" }} />
+      
+      {/* 彩色填充條 */}
+      <div style={{ position: "absolute", left: "50%", transform: "translateX(-50%)", top: fillTop, width: 7, height: fillH, borderRadius: 4,
+        background: fillColor, opacity: amp >= 0 ? 0.95 : 0.4, boxShadow: val !== 0 ? `0 0 7px ${fillColor}` : "none" }} />
+      
+      {/* 白色推桿把手 */}
+      <div style={{ position: "absolute", left: "50%", top: thumbY, transform: "translate(-50%,-50%)", width: 20, height: 8, borderRadius: 3,
+        background: "#fff", boxShadow: `0 1px 4px rgba(0,0,0,0.7), 0 0 6px ${val !== 0 ? fillColor : "transparent"}`, pointerEvents: "none", zIndex: 3 }} />
+    </div>
+  );
+}
+
+
+/**
  * 開關按鈕組件 (Switch / Toggle)
  */
 function Toggle({ on, onChange, label }) {
@@ -1408,7 +1488,7 @@ export default function App() {
       // 三者共用同一份狀態 (st.axes / selAxis),僅呈現方式不同。
       // angUI 為本地等分表 (22.5°),與全域 AXIS_HUE 一致 (環顯示與底層運算對齊)。
       // ====================================================================
-      const ax = st.axes[selAxis];
+      const ax = selAxis ? st.axes[selAxis] : null;
       // [A+C 強化] 是否有任一軸被調整過 → 用來「讓調過的浮出、沒調過的降存在感」(三種樣式共用)
       const anyTouched = AXIS16.some((a) => st.axes[a].hue !== 0 || st.axes[a].sat !== 0);
       const touchedCount = AXIS16.filter((a) => st.axes[a].hue !== 0 || st.axes[a].sat !== 0).length;
@@ -1417,9 +1497,9 @@ export default function App() {
       AXIS16.forEach((a, i) => { const idxR = AXIS16.indexOf("R"); angUI[a] = ((i - idxR) * 22.5 + 360) % 360; });
 
       // 聚焦態:整個環即時反映「草稿」的 Hue/Sat(尚未寫入 st,按確定才套用)
-      const fHueSrc = isFocused ? draftHue : ax.hue;
-      const fSatSrc = isFocused ? draftSat : ax.sat;
-      const fHue = (angUI[selAxis] + (fHueSrc / 99) * 22.5 + 360) % 360;
+      const fHueSrc = isFocused ? draftHue : (ax ? ax.hue : 0);
+      const fSatSrc = isFocused ? draftSat : (ax ? ax.sat : 0);
+      const fHue = selAxis ? ((angUI[selAxis] + (fHueSrc / 99) * 22.5 + 360) % 360) : 0;
       const fSat = Math.max(8, Math.min(100, 70 + (fSatSrc / 99) * 30));
       const ringSelect = "conic-gradient(from 0deg, hsl(0 85% 58%), hsl(60 85% 55%), hsl(120 70% 50%), hsl(180 75% 52%), hsl(240 85% 62%), hsl(300 85% 60%), hsl(360 85% 58%))";
       const ringFocus = `conic-gradient(from ${fHue - 90}deg, hsl(${fHue} ${fSat}% 22%), hsl(${fHue} ${fSat}% 58%) 50%, hsl(${fHue} ${fSat}% 22%))`;
@@ -1453,7 +1533,10 @@ export default function App() {
             {multiStyle === "wheel" ? (
               <div style={{ display: "flex", gap: 24, flexWrap: "wrap", alignItems: "center", width: "100%" }}>
                 {/* === 雷達色環:選擇態(16軸) ↔ 聚焦態(單軸) === */}
-                <div ref={ringRef} style={{ position: "relative", width: 290, height: 290, flexShrink: 0 }}>
+                <div ref={ringRef} 
+                  onClick={(e) => { if (!mOff && !isFocused) setSelAxis(null); }}
+                  style={{ position: "relative", width: 290, height: 290, flexShrink: 0 }}
+                >
                   {/* [聚焦進場] 從中心射向環的擴張光環(每次選軸重播);發光用徑向漸層自含,不溢出容器避免被裁切 */}
                   {isFocused && (
                     <div key={"burst-" + selAxis} style={{ position: "absolute", left: "50%", top: "50%", width: 150, height: 150, borderRadius: "50%", border: `2px solid hsl(${fHue} 85% 62%)`, background: `radial-gradient(circle, transparent 56%, hsl(${fHue} 85% 60% / .45) 70%, transparent 82%)`, transform: "translate(-50%,-50%)", animation: "averBurst .88s cubic-bezier(0.16, 1, 0.3, 1) both", pointerEvents: "none", zIndex: 7 }} />
@@ -1572,7 +1655,7 @@ export default function App() {
                     const sz = isSel ? 34 : touched ? 28 : dim ? 18 : 24;
                     return (
                       <button key={a}
-                        onClick={isDragNode ? undefined : () => enterFocus(a)}
+                        onClick={isDragNode ? undefined : (e) => { e.stopPropagation(); enterFocus(a); }}
                         onPointerDown={isDragNode ? (e) => { if (mOff) return; e.preventDefault(); ringDragRef.current = true; try { e.currentTarget.setPointerCapture(e.pointerId); } catch {} ringPointerMove(e); } : undefined}
                         onPointerMove={isDragNode ? ringPointerMove : undefined}
                         onPointerUp={isDragNode ? (e) => { ringDragRef.current = false; try { e.currentTarget.releasePointerCapture(e.pointerId); } catch {} } : undefined}
@@ -1673,102 +1756,86 @@ export default function App() {
               /* === 推桿台:16 軸彩色直立雙推桿 (Spectrum Fader Console) ===
                  [設計決策] 每軸並排兩根直立推桿:左 S(飽和,染該軸色相)、右 H(色相,藍)。
                  原本 Hue 是推桿下方的窄橫桿(命中區 ~28px,難操控),改為雙直立推桿後命中區=滿高 150px,
-                 且 S/H 視覺語言統一,符合混音台隱喻。VFader 為兩根共用的繪製元件。 */
-              (() => {
-                const FH = 150; // 推桿高度
-                // 單根直立推桿 (S 或 H 共用)
-                const VFader = ({ axis, kind, val, fillColor }) => {
-                  const center = FH / 2;
-                  const amp = (val / 99) * (FH * 0.46);
-                  const fillTop = amp >= 0 ? center - amp : center;
-                  const fillH = Math.abs(amp);
-                  const thumbY = center - amp;
-                  return (
-                    <div style={{ position: "relative", width: 22, height: FH }}>
-                      <div style={{ position: "absolute", left: "50%", top: 0, transform: "translateX(-50%)", width: 7, height: "100%", borderRadius: 4, background: "#0a0c0e", boxShadow: "inset 0 0 4px rgba(0,0,0,0.8)" }} />
-                      <div style={{ position: "absolute", left: 1, right: 1, top: center, height: 1, background: "rgba(255,255,255,0.18)" }} />
-                      <div style={{ position: "absolute", left: "50%", transform: "translateX(-50%)", top: fillTop, width: 7, height: fillH, borderRadius: 4,
-                        background: fillColor, opacity: amp >= 0 ? 0.95 : 0.4, boxShadow: val !== 0 ? `0 0 7px ${fillColor}` : "none" }} />
-                      <div style={{ position: "absolute", left: "50%", top: thumbY, transform: "translate(-50%,-50%)", width: 20, height: 8, borderRadius: 3,
-                        background: "#fff", boxShadow: `0 1px 4px rgba(0,0,0,0.7), 0 0 6px ${val !== 0 ? fillColor : "transparent"}`, pointerEvents: "none", zIndex: 3 }} />
-                      <input type="range" min={-99} max={99} value={val} disabled={mOff}
-                        onChange={(e) => updAxis(axis, kind, parseInt(e.target.value))}
-                        onClick={(e) => e.stopPropagation()} onMouseDown={startDrag} onTouchStart={startDrag} onMouseUp={endDrag} onTouchEnd={endDrag}
-                        className="tr-vfader"
-                        style={{ position: "absolute", inset: 0, opacity: 0, zIndex: 4 }} />
-                    </div>
-                  );
-                };
-                return (
-                  <div style={{ width: "100%", display: "flex", flexDirection: "column", gap: 12 }}>
-                    <div style={{ fontSize: 14, color: T.dim, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                      <span>每軸兩根推桿:<span style={{ color: T.amber }}>S</span> 飽和度、<span style={{ color: T.blue }}>H</span> 色相;往上 = 加、往下 = 減(中線 = 0)。</span>
-                      <button onClick={() => upd("axes", DEF_AXES())} disabled={mOff}
-                        style={{ background: "none", border: "none", color: mOff ? T.faint : T.blue, cursor: mOff ? "default" : "pointer", fontSize: 14, fontFamily: fUI, padding: 0 }}>
-                        全部重設歸零
-                      </button>
-                    </div>
-                    {/* 主控台 */}
-                    <div style={{ position: "relative", background: "linear-gradient(180deg,#15181c,#0c0e11)", border: `1px solid ${T.line}`, borderRadius: 10, padding: "14px 12px 12px", boxShadow: "inset 0 1px 0 rgba(255,255,255,0.04)", overflowX: "auto" }}>
-                      <div style={{ display: "flex", gap: 4, minWidth: "fit-content", justifyContent: "space-between" }}>
-                        {AXIS16.map((a) => {
-                          const axObj = st.axes[a];
-                          const isSel = selAxis === a;
-                          const touched = axObj.hue !== 0 || axObj.sat !== 0;
-                          const ang = angUI[a];
-                          const [r, g, b] = hsv2rgb(ang, 0.9, 0.95);
-                          const col = `rgb(${r * 255},${g * 255},${b * 255})`;
-                          // [C] 有調整過時,未調整且未選中的欄位降存在感
-                          const dim = anyTouched && !touched && !isSel;
-                          return (
-                            <div key={a} onClick={() => { if (!mOff) setSelAxis(a); }}
-                              style={{ flex: "1 0 58px", maxWidth: 76, display: "flex", flexDirection: "column", alignItems: "center", gap: 5, cursor: mOff ? "default" : "pointer",
-                                padding: "4px 3px 6px", borderRadius: 7, background: isSel ? "rgba(30,155,240,0.10)" : "transparent", border: `1px solid ${isSel ? T.blue : "transparent"}`,
-                                opacity: dim ? 0.45 : 1, transition: "opacity .2s" }}>
-                              {/* 數值列 S / H */}
-                              <div style={{ display: "flex", gap: 8, height: 13 }}>
-                                <span style={{ fontFamily: fMono, fontSize: 10.5, color: axObj.sat ? T.amber : T.faint }}>{axObj.sat > 0 ? "+" + axObj.sat : axObj.sat}</span>
-                                <span style={{ fontFamily: fMono, fontSize: 10.5, color: axObj.hue ? T.blue : T.faint }}>{axObj.hue > 0 ? "+" + axObj.hue : axObj.hue}</span>
-                              </div>
-                              {/* 雙推桿 */}
-                              <div style={{ display: "flex", gap: 4 }}>
-                                <VFader axis={a} kind="sat" val={axObj.sat} fillColor={col} />
-                                <VFader axis={a} kind="hue" val={axObj.hue} fillColor={"#3da0ff"} />
-                              </div>
-                              {/* S / H 標示 */}
-                              <div style={{ display: "flex", gap: 4, fontFamily: fMono, fontSize: 9 }}>
-                                <span style={{ width: 22, textAlign: "center", color: T.amber }}>S</span>
-                                <span style={{ width: 22, textAlign: "center", color: T.blue }}>H</span>
-                              </div>
-                              {/* 軸標籤 + 色點;[A] 調過的軸名前綴實心點 */}
-                              <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 2, marginTop: 1 }}>
-                                <span style={{ width: 16, height: 4, borderRadius: 2, background: col, boxShadow: touched ? `0 0 5px ${col}` : "none" }} />
-                                <span style={{ fontFamily: fMono, fontSize: 11.5, fontWeight: 700, color: isSel ? "#fff" : touched ? T.amber : T.dim, display: "flex", alignItems: "center", gap: 3 }}>
-                                  {touched && !isSel && <span style={{ width: 6, height: 6, borderRadius: "50%", background: T.amber, boxShadow: `0 0 4px ${T.amber}` }} />}
-                                  {a}
-                                </span>
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                      {/* 底部反光 */}
-                      <div style={{ height: 8, marginTop: 4, borderRadius: 4, background: "linear-gradient(180deg, rgba(255,255,255,0.05), transparent)" }} />
-                    </div>
+                 且 S/H 視覺語言統一,符合混音台隱喻。 */
+              <div 
+                onClick={(e) => { if (!mOff) setSelAxis(null); }}
+                style={{ width: "100%", display: "flex", flexDirection: "column", gap: 12 }}
+              >
+                <div onClick={(e) => { e.stopPropagation(); }} style={{ fontSize: 14, color: T.dim, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <span>每軸兩根推桿:<span style={{ color: T.amber }}>S</span> 飽和度、<span style={{ color: T.blue }}>H</span> 色相;往上 = 加、往下 = 減(中線 = 0)。</span>
+                  <button onClick={() => upd("axes", DEF_AXES())} disabled={mOff}
+                    style={{ background: "none", border: "none", color: mOff ? T.faint : T.blue, cursor: mOff ? "default" : "pointer", fontSize: 14, fontFamily: fUI, padding: 0 }}>
+                    全部重設歸零
+                  </button>
+                </div>
+                {/* 主控台 */}
+                <div 
+                  onClick={(e) => { if (!mOff) setSelAxis(null); }}
+                  style={{ position: "relative", background: "linear-gradient(180deg,#15181c,#0c0e11)", border: `1px solid ${T.line}`, borderRadius: 10, padding: "14px 12px 12px", boxShadow: "inset 0 1px 0 rgba(255,255,255,0.04)", overflowX: "auto" }}
+                >
+                  <div style={{ display: "flex", gap: 4, minWidth: "fit-content", justifyContent: "space-between" }}>
+                    {AXIS16.map((a) => {
+                      const axObj = st.axes[a];
+                      const isSel = selAxis === a;
+                      const touched = axObj.hue !== 0 || axObj.sat !== 0;
+                      const ang = angUI[a];
+                      const [r, g, b] = hsv2rgb(ang, 0.9, 0.95);
+                      const col = `rgb(${r * 255},${g * 255},${b * 255})`;
+                      // [C] 有調整過時,未調整且未選中的欄位降存在感
+                      const dim = anyTouched && !touched && !isSel;
+                      return (
+                        <div key={a} onClick={(e) => { e.stopPropagation(); if (!mOff) setSelAxis(a); }}
+                          style={{ flex: "1 0 58px", maxWidth: 76, display: "flex", flexDirection: "column", alignItems: "center", gap: 5, cursor: mOff ? "default" : "pointer",
+                            padding: "4px 3px 6px", borderRadius: 7, background: isSel ? "rgba(30,155,240,0.10)" : "transparent", border: `1px solid ${isSel ? T.blue : "transparent"}`,
+                            opacity: dim ? 0.45 : 1, transition: "opacity .2s" }}>
+                          {/* 數值列 S / H */}
+                          <div style={{ display: "flex", gap: 8, height: 13 }}>
+                            <span style={{ fontFamily: fMono, fontSize: 10.5, color: axObj.sat ? T.amber : T.faint }}>{axObj.sat > 0 ? "+" + axObj.sat : axObj.sat}</span>
+                            <span style={{ fontFamily: fMono, fontSize: 10.5, color: axObj.hue ? T.blue : T.faint }}>{axObj.hue > 0 ? "+" + axObj.hue : axObj.hue}</span>
+                          </div>
+                          {/* 雙推桿 */}
+                          <div style={{ display: "flex", gap: 4 }}>
+                            <VFader axis={a} kind="sat" val={axObj.sat} fillColor={col} mOff={mOff} updAxis={updAxis} startDrag={startDrag} endDrag={endDrag} />
+                            <VFader axis={a} kind="hue" val={axObj.hue} fillColor={"#3da0ff"} mOff={mOff} updAxis={updAxis} startDrag={startDrag} endDrag={endDrag} />
+                          </div>
+                          {/* S / H 標示 */}
+                          <div style={{ display: "flex", gap: 4, fontFamily: fMono, fontSize: 9 }}>
+                            <span style={{ width: 22, textAlign: "center", color: T.amber }}>S</span>
+                            <span style={{ width: 22, textAlign: "center", color: T.blue }}>H</span>
+                          </div>
+                          {/* 軸標籤 + 色點;[A] 調過的軸名前綴實心點 */}
+                          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 2, marginTop: 1 }}>
+                            <span style={{ width: 16, height: 4, borderRadius: 2, background: col, boxShadow: touched ? `0 0 5px ${col}` : "none" }} />
+                            <span style={{ fontFamily: fMono, fontSize: 11.5, fontWeight: 700, color: isSel ? "#fff" : touched ? T.amber : T.dim, display: "flex", alignItems: "center", gap: 3 }}>
+                              {touched && !isSel && <span style={{ width: 6, height: 6, borderRadius: "50%", background: T.amber, boxShadow: `0 0 4px ${T.amber}` }} />}
+                              {a}
+                            </span>
+                          </div>
+                        </div>
+                      );
+                    })}
                   </div>
-                );
-              })()
+                  {/* 底部反光 */}
+                  <div style={{ height: 8, marginTop: 4, borderRadius: 4, background: "linear-gradient(180deg, rgba(255,255,255,0.05), transparent)" }} />
+                </div>
+              </div>
             ) : (
               /* === 色卡矩陣 2x8 卡片視圖 === */
-              <div style={{ width: "100%", display: "flex", flexDirection: "column", gap: 12 }}>
-                <div style={{ fontSize: 14, color: T.dim, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <div 
+                onClick={(e) => { if (!mOff) setSelAxis(null); }}
+                style={{ width: "100%", display: "flex", flexDirection: "column", gap: 12 }}
+              >
+                <div onClick={(e) => { e.stopPropagation(); }} style={{ fontSize: 14, color: T.dim, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                   <span>16 軸色彩等化器 — 在卡片內直接調整，或點擊選中當前軸：</span>
                   <button onClick={() => upd("axes", DEF_AXES())} disabled={mOff}
                     style={{ background: "none", border: "none", color: mOff ? T.faint : T.blue, cursor: mOff ? "default" : "pointer", fontSize: 14, fontFamily: fUI, padding: 0 }}>
                     全部重設歸零
                   </button>
                 </div>
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(8, 1fr)", gap: 10, width: "100%", boxSizing: "border-box" }}>
+                <div 
+                  onClick={(e) => { if (!mOff) setSelAxis(null); }}
+                  style={{ display: "grid", gridTemplateColumns: "repeat(8, 1fr)", gap: 10, width: "100%", boxSizing: "border-box" }}
+                >
                   {AXIS16.map((a) => {
                     const axObj = st.axes[a];
                     const touched = axObj.hue !== 0 || axObj.sat !== 0;
@@ -1779,7 +1846,7 @@ export default function App() {
                     const dim = anyTouched && !touched && !isSel;
                     return (
                       <div key={a}
-                        onClick={() => { if (!mOff) setSelAxis(a); }}
+                        onClick={(e) => { e.stopPropagation(); if (!mOff) setSelAxis(a); }}
                         style={{
                           background: T.panel2,
                           border: `1.5px solid ${isSel ? T.blue : touched ? T.amber : T.line2}`,
