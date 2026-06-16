@@ -1,0 +1,2688 @@
+/* ============================================================================
+ * AVer TR615 — Paint/Look WEB UI 原型  (V3)
+ * ----------------------------------------------------------------------------
+ * 用途:Pro AV PTZ 攝影機 TR615 之 WEB UI「Paint/Look」色彩調校介面原型。
+ *       此為 UX/UI 設計原型 (React 單檔),非最終工程交付。色彩運算為前端 JS 模擬,
+ *       實機由韌體 DSP 處理;原型的示波器/畫面僅供互動展示。
+ *
+ * 【V3 主要設計決策與變更摘要】(供接手者快速理解)
+ *  1. Scene File(場景檔):
+ *     - 升級為「場景庫」:原廠 Standard 卡(不可刪/不佔額度)+ 使用者自訂場景(名稱/備註/縮圖,上限16)。
+ *     - 與 Live View 整合為 filmstrip;場景條為「純取用層」(載入/編輯/刪除),
+ *       「儲存/另存」動作放在調整區,符合「調完才存」的工作流。
+ *     - dirty(已修改)採整個 st 狀態深度比對 → block 的 on/off 也算修改(理由見該處註解)。
+ *  2. Multi-Matrix 提供三種 UX 呈現 (供設計比較,可切換):
+ *     - 雷達色環:選擇態(16軸等分環)↔ 聚焦態(只留選中軸、整環變該色相)。
+ *     - 推桿台:16 軸 × S/H 雙直立推桿(混音台風格,命中區大、適合大幅塑形)。
+ *     - 色卡矩陣:2×8 卡片密集網格(數值精確、總覽)。
+ *  3. 16 軸色相:等分 22.5°(已查證,見 AXIS_HUE 註解);全域 AXIS_HUE 與環顯示一致,
+ *     影響範圍 falloff 亦對齊 22.5°。各軸「精確相位角」待韌體定義。
+ *  4. 監看(示波器)三種:向量 / 波形 / 直方圖。向量鏡與波形為真實廣播工具
+ *     (向量鏡含 75% 色靶概念與膚色線、波形為 0–100 IRE),但本原型的繪製為「示意級」,
+ *     非儀器級精確視覺 —— 最終視覺需另開規格或接韌體 scope 輸出。
+ *  5. 效能:畫面內部運算 1280×720;拖曳滑桿時自動切 320×180 低解析度 (baseCanvasDragRef/useDrag),
+ *     放開回全解析度 → 兼顧靜止清晰與拖曳流暢。
+ *  6. OFF 狀態:block 關閉時,內部控制項用真正的 disabled(非僅 CSS 變淡),
+ *     避免鍵盤 Tab+方向鍵仍可調整的漏洞。
+ *  7. 預覽圖:優先載入 /meeting_room.png,失敗則用程式繪製的 fallback 場景(可攜性)。
+ *
+ * 【待 PM / 韌體釐清】(散見各處 [PM] 標記)
+ *  - Multi-Matrix 16 軸各自的精確相位角與涵蓋範圍(以韌體為準)。
+ *  - Scene dirty 是否須以「實際影響畫面的有效值」為準(目前 on/off 即算修改)。
+ *  - Standard 是獨立原廠預設還是佔 Scene File 第 1 槽(韌體規格寫 1-16)。
+ *  - 雙重 Saturation(Image Process 與 Multi-Matrix)疊加順序。
+ *  - 示波器的儀器級視覺規格;Video & Audio 頁欄位值的規格依據。
+ * ========================================================================== */
+
+import { useState, useEffect, useRef, useCallback } from "react";
+
+// ============================================================================
+// 1. 色彩與信號處理引擎 (Color & Signal Processing Engine)
+// 這些函數模擬了攝影機內部 DSP 晶片的訊號處理流程。
+// ============================================================================
+
+/**
+ * 數值限幅函數 (Clamp)，將數值限制在 0-255 之間
+ */
+const c255 = (v) => (v < 0 ? 0 : v > 255 ? 255 : v);
+
+/**
+ * RGB 轉 HSV 色彩空間
+ */
+function rgb2hsv(r, g, b) {
+  const mx = Math.max(r, g, b), mn = Math.min(r, g, b), d = mx - mn;
+  let h = 0;
+  if (d) {
+    if (mx === r) h = ((g - b) / d) % 6;
+    else if (mx === g) h = (b - r) / d + 2;
+    else h = (r - g) / d + 4;
+    h *= 60;
+    if (h < 0) h += 360;
+  }
+  return [h, mx === 0 ? 0 : d / mx, mx];
+}
+
+/**
+ * HSV 轉 RGB 色彩空間
+ */
+function hsv2rgb(h, s, v) {
+  h = ((h % 360) + 360) % 360;
+  const c = v * s, x = c * (1 - Math.abs(((h / 60) % 2) - 1)), m = v - c;
+  let r = 0, g = 0, b = 0;
+  if (h < 60) { r = c; g = x; }
+  else if (h < 120) { r = x; g = c; }
+  else if (h < 180) { g = c; b = x; }
+  else if (h < 240) { g = x; b = c; }
+  else if (h < 300) { r = x; b = c; }
+  else { r = c; b = x; }
+  return [r + m, g + m, b + m];
+}
+
+/**
+ * 旋轉 RGB 顏色向量的色相 (Hue Rotate)
+ */
+function hueRotate(r, g, b, deg) {
+  const a = (deg * Math.PI) / 180, c = Math.cos(a), s = Math.sin(a);
+  return [
+    r * (0.213 + c * 0.787 - s * 0.213) + g * (0.715 - c * 0.715 - s * 0.715) + b * (0.072 - c * 0.072 + s * 0.928),
+    r * (0.213 - c * 0.213 + s * 0.143) + g * (0.715 + c * 0.285 + s * 0.14) + b * (0.072 - c * 0.072 - s * 0.283),
+    r * (0.213 - c * 0.213 - s * 0.787) + g * (0.715 - c * 0.715 + s * 0.715) + b * (0.072 + c * 0.928 + s * 0.072),
+  ];
+}
+
+// 根據 Sony 廣播級攝影機標準定義 of 16 軸色彩順序
+const AXIS16 = ["B", "B+", "MG-", "MG", "MG+", "R", "R+", "YL-", "YL", "YL+", "G-", "G", "G+", "CY", "CY+", "B-"];
+
+// 16 軸對應的基礎色相角度 (0-360)。
+// [設計決策 / 已查證] 16 軸「等分」於色相環,每軸間隔 22.5° (360°÷16)。
+//   依據:Sony Multi-Matrix 的 16 個軸名 (B→B+→MG-→…→B-) 是一個固定循環序列繞色相圓一圈,
+//   等分是唯一合理的分布;軸名僅標示鄰近色區,並非釘在該顏色的精確位置。
+//   注意:此處為 UI/模擬用的等分近似;各軸對應「韌體的精確相位角」需以韌體定義為準 (列入 PM 釐清清單)。
+// [變更歷史] 先前曾誤用非均勻的 HSL 近似值 (B:230, YL:55…),已更正為等分計算。
+//   multi 區塊的色相環顯示亦使用同樣的等分 (區塊內本地 angUI),兩者一致。
+const AXIS_HUE = (() => {
+  const o = {}; const idxR = AXIS16.indexOf("R");
+  AXIS16.forEach((a, i) => { o[a] = ((i - idxR) * 22.5 + 360) % 360; });
+  return o;
+})();
+
+/**
+ * 應用 User Matrix 色彩矩陣調整
+ * 模擬矩陣係數相互擠壓、色彩飽和度(level)與整體色相(phase)的線性變換
+ */
+function applyMatrix(R, G, B, m) {
+  // 1. 套用 Phase (整體色相旋轉，範圍為 +/- 30 度)
+  if (m.phase !== 0) [R, G, B] = hueRotate(R, G, B, (m.phase / 99) * 30);
+  
+  // 2. 套用六色混合矩陣 (R-G, R-B, G-R, G-B, B-R, B-G 色差擠壓)
+  const k = 0.75; // 混合強度增益係數
+  const nR = R + k * ((m.rg / 100) * (R - G) + (m.rb / 100) * (R - B));
+  const nG = G + k * ((m.gr / 100) * (G - R) + (m.gb / 100) * (G - B));
+  const nB = B + k * ((m.br / 100) * (B - R) + (m.bg / 100) * (B - G));
+  R = nR; G = nG; B = nB;
+  
+  // 3. 套用 Level (整體飽和度調整)
+  if (m.level !== 0) {
+    const sat = 1 + m.level / 120;
+    const Y = 0.2126 * R + 0.7152 * G + 0.0722 * B; // Rec. 709 亮度公式
+    R = Y + (R - Y) * sat;
+    G = Y + (G - Y) * sat;
+    B = Y + (B - Y) * sat;
+  }
+  return [R, G, B];
+}
+
+/**
+ * 應用 16 軸 Multi-Matrix 局部色彩調整
+ * 僅對最接近的兩個色相區間做平滑插值(Interpolation)調整，不影響其他色區
+ */
+function applyMulti(R, G, B, axes) {
+  let [h, s, v] = rgb2hsv(R, G, B);
+  if (s < 0.05) return [R, G, B]; // 忽略極低飽和度區（接近灰色/黑白的像素）
+
+  // 尋找色相距離最近 of 16 軸節點
+  let best = 0, bd = 999;
+  AXIS16.forEach((a, i) => {
+    let d = Math.abs(((AXIS_HUE[a] - h + 540) % 360) - 180);
+    if (d < bd) { bd = d; best = i; }
+  });
+
+  const ax = axes[AXIS16[best]];
+  if (!ax || (ax.hue === 0 && ax.sat === 0)) return [R, G, B];
+
+  // [設計決策] 影響範圍 (半寬) 與 22.5° 軸間距對齊:相鄰兩軸的影響在交界處剛好交接,不過度重疊。
+  // (先前為 30°,與等分軸距不一致,已對齊為 22.5°。)
+  const w = Math.max(0, 1 - bd / 22.5);
+  h += (ax.hue / 99) * 22 * w;         // 最大調整偏轉約 22 度
+  s *= 1 + (ax.sat / 99) * 0.85 * w;   // 最大飽和度變更倍率
+  
+  return hsv2rgb(h, Math.min(1, s), v);
+}
+
+/**
+ * 應用色調與伽馬曲線控制 (Tone / Knee / Black Level)
+ * - Black Level (黑位準): 對暗部進行提升或壓低
+ * - Knee Point & Slope (高光壓縮): 針對高光部分做壓縮以保留過曝層次
+ */
+function applyTone(R, G, B, p) {
+  // Black level 提升暗部基準 (影響全圖，但偏向暗部)
+  const bl = p.black / 50 * 0.12;
+  const kneeOn = p.kneeOn && !p.autoKnee;
+  const kp = p.kneePoint / 109, slope = 0.5 + (p.kneeSlope + 5) / 20;
+
+  const f = (v) => {
+    // 套用黑位補償
+    v = v + bl * (1 - v);
+    // 套用高光壓縮曲線
+    if (kneeOn && v > kp) {
+      v = kp + (v - kp) * slope;
+    }
+    return v;
+  };
+
+  return [f(R), f(G), f(B)];
+}
+
+/**
+ * 應用輪廓細節增強 (Detail Level)
+ * 模擬硬體內部的 3x3 拉普拉斯(Laplacian)邊緣檢測高頻濾波器
+ */
+function applyDetail(data, W, H, level) {
+  if (level === 0) return data;
+  const out = new Uint8ClampedArray(data);
+  const amt = level / 7 * 0.6; // 調整強度係數
+
+  for (let y = 1; y < H - 1; y++) {
+    for (let x = 1; x < W - 1; x++) {
+      const i = (y * W + x) * 4;
+      for (let c = 0; c < 3; c++) {
+        // 拉普拉斯運算元 (邊緣高頻分量)
+        const lap = 4 * data[i + c] - data[i - 4 + c] - data[i + 4 + c] - data[i - W * 4 + c] - data[i + W * 4 + c];
+        out[i + c] = c255(data[i + c] + lap * amt);
+      }
+    }
+  }
+  return out;
+}
+
+// [設計決策 / 效能] 內部運算解析度維持 1280×720 以保畫面清晰。
+//   逐像素 JS 色彩運算在高解析度下拖曳會卡,故採「動態降採樣」:拖曳滑桿時切到 320×180
+//   低解析度即時預覽 (見 baseCanvasDragRef / useDrag),放開後回到全解析度。
+//   → 兼顧「靜止清晰」與「拖曳流暢」,優於單純全程降解析度。實機由韌體處理,無此限制。
+const SW = 1280, SH = 720;
+
+/**
+ * 備用繪製函數 (Fallback Draw)
+ * 當外部圖片 /meeting_room.png 載入失敗時，以程式畫布渲染一個高品質的影音對談直播間。
+ */
+function drawFallbackScene(ctx) {
+  // 1. 溫暖與日光色溫的簡約冷灰底牆漸層
+  let g = ctx.createLinearGradient(0, 0, SW, SH);
+  g.addColorStop(0, "rgb(155, 162, 170)"); 
+  g.addColorStop(1, "rgb(98, 105, 114)");  
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, SW, SH);
+
+  // 2. 模擬來自左側的柔和日照光線
+  const rg = ctx.createRadialGradient(SW * 0.2, SH * 0.2, 20, SW * 0.2, SH * 0.2, SW * 0.45);
+  rg.addColorStop(0, "rgba(255, 252, 245, 0.9)");
+  rg.addColorStop(1, "rgba(255, 252, 245, 0)");
+  ctx.fillStyle = rg;
+  ctx.fillRect(0, 0, SW, SH);
+
+  // 3. 繪製簡約的現代訪談長桌
+  ctx.fillStyle = "rgb(42, 45, 48)";
+  ctx.beginPath();
+  ctx.moveTo(SW * 0.15, SH * 0.8);
+  ctx.lineTo(SW * 0.85, SH * 0.8);
+  ctx.lineTo(SW * 0.9, SH);
+  ctx.lineTo(SW * 0.1, SH);
+  ctx.closePath();
+  ctx.fill();
+
+  // 4. 繪製左、右兩側極簡現代設計師椅子的剪影
+  // 左椅
+  ctx.fillStyle = "rgb(30, 32, 35)";
+  ctx.beginPath();
+  ctx.moveTo(SW * 0.25, SH * 0.8);
+  ctx.lineTo(SW * 0.35, SH * 0.8);
+  ctx.lineTo(SW * 0.38, SH * 0.55);
+  ctx.lineTo(SW * 0.22, SH * 0.55);
+  ctx.closePath();
+  ctx.fill();
+  // 右椅
+  ctx.fillStyle = "rgb(30, 32, 35)";
+  ctx.beginPath();
+  ctx.moveTo(SW * 0.65, SH * 0.8);
+  ctx.lineTo(SW * 0.75, SH * 0.8);
+  ctx.lineTo(SW * 0.78, SH * 0.55);
+  ctx.lineTo(SW * 0.62, SH * 0.55);
+  ctx.closePath();
+  ctx.fill();
+
+  // 5. 繪製桌上的專業直播麥克風
+  ctx.strokeStyle = "rgb(20, 20, 20)";
+  ctx.lineWidth = 4;
+  ctx.beginPath();
+  ctx.moveTo(SW * 0.5, SH * 0.8);    
+  ctx.lineTo(SW * 0.48, SH * 0.7);   
+  ctx.lineTo(SW * 0.52, SH * 0.62);  
+  ctx.stroke();
+  
+  ctx.fillStyle = "rgb(50, 50, 50)";
+  ctx.beginPath();
+  ctx.arc(SW * 0.52, SH * 0.6, 10, 0, Math.PI * 2);
+  ctx.fill();
+
+  // 6. 底部標準色度參考色塊
+  const colors = ["rgb(200, 50, 50)", "rgb(230, 160, 40)", "rgb(60, 150, 80)", "rgb(50, 110, 200)"];
+  colors.forEach((c, i) => {
+    ctx.fillStyle = c;
+    ctx.fillRect(SW - 130 + i * 28, SH - 36, 22, 22);
+  });
+}
+
+// ============================================================================
+// 2. UI 主題配色與樣式常數 (AVer UI Theme Colors)
+// ============================================================================
+const T = {
+  page: "#0d0e10",       
+  side: "#16181b",       
+  sideActive: "#1e6fd9", 
+  sideHover: "#202328",  
+  panel: "#1a1d21",      
+  panel2: "#212529",     
+  line: "#2c3138",       
+  line2: "#3a4048",      
+  text: "#e8eaec",       
+  dim: "#8e959c",        
+  faint: "#5e656d",      
+  blue: "#1e9bf0",       
+  blueDark: "#1670b8",   
+  green: "#37d67a",      
+  amber: "#f5a623",      
+};
+
+const fUI = "'Segoe UI','Noto Sans TC',system-ui,sans-serif";
+const fMono = "'Consolas','Courier New',monospace";
+
+// 主要功能選單區塊定義
+const BLOCKS = [
+  ["matrix", "Matrix", "User Matrix 色彩矩陣"],
+  ["multi", "Multi-Matrix", "16 軸分區色彩"],
+  ["detail", "Detail", "輪廓銳利度"],
+  ["knee", "Knee", "高光壓縮"],
+  ["black", "Black Level", "黑位準"],
+];
+
+// Matrix 六色軸係數鍵值與中文提示
+const MATRIX_KEYS = [
+  ["level", "Level", "整體飽和度"],
+  ["phase", "Phase", "整體色相"],
+  ["rg", "R-G", ""],
+  ["rb", "R-B", ""],
+  ["gr", "G-R", ""],
+  ["gb", "G-B", ""],
+  ["br", "B-R", ""],
+  ["bg", "B-G", ""]
+];
+
+const DEF_AXES = () => {
+  const o = {};
+  AXIS16.forEach((a) => (o[a] = { hue: 0, sat: 0 }));
+  return o;
+};
+
+// 預設的標準原廠設定值 (Standard / Neutral Preset)
+const DEF = {
+  matrixOn: true, level: 0, phase: 0, rg: 0, rb: 0, gr: 0, gb: 0, br: 0, bg: 0,
+  multiOn: false, axes: DEF_AXES(),
+  detailOn: false, detail: 0,
+  kneeOn: false, autoKnee: false, kneeSens: "Mid", kneePoint: 95, kneeSlope: 0,
+  black: 0,
+};
+
+// ============================================================================
+// 3. React 共用子組件 (Atoms Components)
+// ============================================================================
+
+/**
+ * 數值滑動輸入組件 (Slider)
+ */
+function Slider({ k, label, hint, min, max, val, onChange, neutral = 0, onStartDrag, onEndDrag, disabled = false }) {
+  return (
+    <div style={{ marginBottom: 14, opacity: disabled ? 0.4 : 1 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 5 }}>
+        <span style={{ fontSize: 14, color: T.text }}>
+          {label}
+          {hint ? <span style={{ color: T.faint, fontSize: 14 }}> · {hint}</span> : null}
+        </span>
+        <span style={{ fontFamily: fMono, fontSize: 14, color: val === neutral ? T.faint : T.blue }}>
+          {val > 0 && min < 0 ? "+" + val : val}
+        </span>
+      </div>
+      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        <span style={{ fontFamily: fMono, fontSize: 14, color: T.faint, width: 24, textAlign: "right" }}>{min}</span>
+        <input 
+          type="range" 
+          min={min} 
+          max={max} 
+          value={val} 
+          disabled={disabled}
+          onChange={(e) => onChange(parseInt(e.target.value))} 
+          onMouseDown={onStartDrag}
+          onTouchStart={onStartDrag}
+          onMouseUp={onEndDrag}
+          onTouchEnd={onEndDrag}
+          className="tr-sl" 
+          style={{ "--p": ((val - min) / (max - min)) * 100 + "%", cursor: disabled ? "not-allowed" : "pointer" }} 
+        />
+        <span style={{ fontFamily: fMono, fontSize: 14, color: T.faint, width: 24 }}>{max}</span>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * 開關按鈕組件 (Switch / Toggle)
+ */
+function Toggle({ on, onChange, label }) {
+  return (
+    <button 
+      onClick={() => onChange(!on)} 
+      style={{ display: "flex", alignItems: "center", gap: 8, background: "none", border: "none", cursor: "pointer", padding: 0 }}
+    >
+      <span style={{ width: 34, height: 18, borderRadius: 9, background: on ? T.blue : T.line2, position: "relative", transition: "background .15s" }}>
+        <span style={{ position: "absolute", top: 2, left: on ? 18 : 2, width: 14, height: 14, borderRadius: 7, background: "#fff", transition: "left .15s" }} />
+      </span>
+      {label && <span style={{ fontSize: 14, color: on ? T.text : T.dim }}>{label}</span>}
+    </button>
+  );
+}
+
+/**
+ * 區塊標題組件 (Block Header)
+ */
+function BlockHeader({ title, sub, right }) {
+  return (
+    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 14, gap: 10 }}>
+      <div>
+        <div style={{ fontSize: 17, fontWeight: 600, color: T.text }}>{title}</div>
+        <div style={{ fontSize: 14, color: T.faint, marginTop: 2 }}>{sub}</div>
+      </div>
+      {right}
+    </div>
+  );
+}
+
+/**
+ * 迷你按鈕組件 (Mini Button)
+ */
+function MiniBtn({ children, onClick, primary, disabled }) {
+  return (
+    <button 
+      onClick={onClick} 
+      disabled={disabled} 
+      style={{ 
+        flex: 1, padding: "4px 0", fontSize: 14, cursor: disabled ? "default" : "pointer", 
+        borderRadius: 5, border: `1px solid ${primary ? T.blueDark : T.line2}`, 
+        background: primary ? "rgba(30,155,240,0.12)" : "transparent", 
+        color: disabled ? T.faint : primary ? T.blue : T.dim, 
+        opacity: disabled ? 0.45 : 1, fontFamily: fUI 
+      }}
+    >
+      {children}
+    </button>
+  );
+}
+
+/**
+ * 說明提示組件 (Note)
+ */
+function Note({ children }) {
+  return (
+    <div style={{ fontSize: 14, color: T.faint, lineHeight: 1.6, marginTop: 6, paddingTop: 8, borderTop: `1px solid ${T.line}` }}>
+      {children}
+    </div>
+  );
+}
+
+/**
+ * 警示提示組件 (Cross Hint)
+ */
+function CrossHint({ children }) {
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 7, padding: "7px 10px", borderRadius: 7, background: "rgba(245,166,35,0.07)", border: "1px solid rgba(245,166,35,0.25)", fontSize: 14, color: "#d9b06a", lineHeight: 1.5 }}>
+      <span style={{ fontSize: 14 }}>⚠</span>{children}
+    </div>
+  );
+}
+
+/**
+ * 生成各參數狀態的單行摘要文字，供快照記錄與比較
+ */
+function summarize(d) {
+  return (
+    <>
+      <div>Matrix {d.matrixOn ? "ON" : "OFF"} · LVL{d.level >= 0 ? "+" : ""}{d.level} PH{d.phase >= 0 ? "+" : ""}{d.phase}</div>
+      <div>RG{d.rg >= 0 ? "+" : ""}{d.rg} RB{d.rb >= 0 ? "+" : ""}{d.rb} GR{d.gr >= 0 ? "+" : ""}{d.gr} GB{d.gb >= 0 ? "+" : ""}{d.gb} BR{d.br >= 0 ? "+" : ""}{d.br} BG{d.bg >= 0 ? "+" : ""}{d.bg}</div>
+      <div>Multi {d.multiOn ? "ON" : "OFF"} · Detail {d.detailOn ? (d.detail >= 0 ? "+" : "") + d.detail : "OFF"} · Knee {d.kneeOn ? (d.autoKnee ? "AUTO" : `P${d.kneePoint}/S${d.kneeSlope >= 0 ? "+" : ""}${d.kneeSlope}`) : "OFF"} · BLK{d.black >= 0 ? "+" : ""}{d.black}</div>
+    </>
+  );
+}
+
+/**
+ * 設置面板卡片 (Config Card)
+ */
+function ConfigCard({ title, children }) {
+  return (
+    <div style={{
+      background: T.panel,
+      border: `1px solid ${T.line}`,
+      borderRadius: 10,
+      overflow: "hidden",
+      marginBottom: 10,
+      width: "100%",
+      boxSizing: "border-box"
+    }}>
+      {/* 標題欄 */}
+      <div style={{
+        background: "rgba(0, 0, 0, 0.22)",
+        padding: "10px 16px",
+        fontSize: 14,
+        fontWeight: 600,
+        color: "#fff",
+        borderBottom: `1px solid ${T.line}`,
+        fontFamily: fUI
+      }}>
+        {title}
+      </div>
+      {/* 內容區 */}
+      <div style={{
+        padding: "16px 20px",
+        fontFamily: fUI
+      }}>
+        {children}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * 垂直排列單選框組件 (Vertical Radio Button - 圓點在上，文字在下)
+ */
+function VerticalRadio({ label, checked, onChange, disabled }) {
+  return (
+    <label style={{
+      display: "flex",
+      flexDirection: "column",
+      alignItems: "center",
+      gap: 6,
+      cursor: disabled ? "not-allowed" : "pointer",
+      userSelect: "none",
+      minWidth: 70,
+      opacity: disabled ? 0.45 : 1
+    }}>
+      <input 
+        type="radio" 
+        checked={checked} 
+        onChange={disabled ? undefined : onChange} 
+        style={{ display: "none" }} 
+      />
+      {/* 圓圈 */}
+      <span style={{ 
+        width: 14, 
+        height: 14, 
+        borderRadius: "50%", 
+        border: checked ? `2px solid #fff` : `2px solid ${T.faint}`, 
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        background: "transparent",
+        transition: "all 0.15s"
+      }}>
+        {checked && <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#fff" }} />}
+      </span>
+      {/* 文字 */}
+      <span style={{
+        fontSize: 14,
+        color: checked ? "#fff" : T.dim,
+        fontWeight: checked ? 600 : 400,
+        fontFamily: fUI
+      }}>
+        {label}
+      </span>
+    </label>
+  );
+}
+
+/**
+ * 下拉選擇框組件 (Select)
+ */
+function Select({ val, options, onChange, disabled, style }) {
+  return (
+    <select
+      value={val}
+      onChange={(e) => onChange(e.target.value)}
+      disabled={disabled}
+      style={{
+        background: "#101216",
+        border: `1px solid ${T.line2}`,
+        borderRadius: 6,
+        color: disabled ? T.faint : T.text,
+        fontSize: 14,
+        padding: "8px 12px",
+        outline: "none",
+        cursor: disabled ? "not-allowed" : "pointer",
+        width: "100%",
+        maxWidth: 320,
+        fontFamily: fUI,
+        opacity: disabled ? 0.6 : 1,
+        transition: "border-color 0.15s",
+        boxSizing: "border-box",
+        ...style
+      }}
+    >
+      {options.map((opt) => (
+        <option key={opt} value={opt} style={{ background: "#1a1d21", color: T.text }}>
+          {opt}
+        </option>
+      ))}
+    </select>
+  );
+}
+
+/**
+ * 帶有 Header 標題的設置單元格 (Form Field Card Box)
+ */
+function FormField({ label, children, rightLabel, style }) {
+  return (
+    <div style={{
+      border: `1.5px solid ${T.line}`,
+      borderRadius: 4,
+      background: "#08090a", // 完全黑色背景，與 AVer 設計稿保持一致
+      display: "flex",
+      flexDirection: "column",
+      minHeight: 84, // 統一控制高度以利網格對齊
+      boxSizing: "border-box",
+      width: "100%",
+      ...style
+    }}>
+      {/* 小 Header 標籤 */}
+      <div style={{
+        background: "#22252a", // 灰色小 Header 背景
+        padding: "4px 12px",
+        fontSize: 14,
+        fontWeight: 600,
+        color: T.dim,
+        borderBottom: `1.5px solid ${T.line}`,
+        display: "flex",
+        justifyContent: "space-between",
+        alignItems: "center",
+        fontFamily: fUI
+      }}>
+        <span>{label}</span>
+        {rightLabel !== undefined && <span style={{ color: T.blue, fontFamily: fMono }}>{rightLabel}</span>}
+      </div>
+      {/* 內容 Control 區域 */}
+      <div style={{
+        padding: "8px 12px",
+        flex: 1,
+        display: "flex",
+        alignItems: "center",
+        background: "#08090a",
+        fontFamily: fUI,
+        boxSizing: "border-box"
+      }}>
+        {children}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * 用於 FormField 內置的滑動條組件 (Body Slider)
+ */
+function BodySlider({ val, min, max, onChange }) {
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 10, width: "100%", padding: "0 6px", boxSizing: "border-box" }}>
+      <span style={{ fontSize: 13, color: T.faint, width: 14, textAlign: "right", fontFamily: fMono }}>{min}</span>
+      <input 
+        type="range" 
+        min={min} 
+        max={max} 
+        value={val} 
+        onChange={(e) => onChange(parseInt(e.target.value))}
+        className="tr-sl" 
+        style={{ 
+          "--p": ((val - min) / (max - min)) * 100 + "%",
+          flex: 1,
+          height: 4,
+          borderRadius: 2
+        }} 
+      />
+      <span style={{ fontSize: 13, color: T.faint, width: 14, fontFamily: fMono }}>{max}</span>
+    </div>
+  );
+}
+
+/**
+ * 右側場景檔的小方塊縮圖按鈕 (Scene Select Grid Tile)
+ */
+function SceneTile({ thumb, name, remark, active, dirty, factory, onLoad, onEdit, onDelete }) {
+  return (
+    <div style={{ 
+      padding: "0px", 
+      boxSizing: "border-box", 
+      width: "100%"
+    }}>
+      <div style={{ 
+        position: "relative", 
+        width: "100%", 
+        borderRadius: 8, 
+        overflow: "hidden", 
+        background: T.panel2, 
+        border: `1.5px solid ${T.line}`, 
+        boxSizing: "border-box",
+        transition: "all 0.15s ease"
+      }}>
+        {/* 藍色選擇框 — 位於圖層最上面 (zIndex: 9999)，粗細為 3px，使用內側 3px 確保圓角與邊緣絕無裁切問題 */}
+        {active && (
+          <div style={{
+            position: "absolute",
+            inset: 0,
+            border: `3px solid ${T.blue}`,
+            borderRadius: 8,
+            pointerEvents: "none", // 點擊穿透，不影響使用者操作卡片內的按鈕
+            zIndex: 9999, // 圖層最上層
+            boxSizing: "border-box"
+          }} />
+        )}
+        
+        <div onClick={onLoad} title={remark || name} style={{ cursor: "pointer" }}>
+          <div style={{ position: "relative", aspectRatio: "16/9", background: "#0a0c0e" }}>
+            {thumb ? (
+              <img 
+                src={thumb} 
+                alt="" 
+                style={{ 
+                  width: "100%", 
+                  height: "100%", 
+                  objectFit: "cover", 
+                  display: "block"
+                }} 
+              />
+            ) : (
+              <div style={{ 
+                display: "flex", 
+                alignItems: "center", 
+                justifyContent: "center", 
+                height: "100%", 
+                color: T.faint, 
+                fontSize: 14
+              }}>
+                無縮圖
+              </div>
+            )}
+            {factory && (
+              <span style={{ position: "absolute", left: 4, top: 4, fontSize: 14, fontWeight: 700, background: "rgba(30,155,240,0.95)", color: "#fff", borderRadius: 3, padding: "1px 5px", boxShadow: "0 2px 4px rgba(0,0,0,0.3)", zIndex: 10 }}>原廠</span>
+            )}
+            {/* 取消藍色勾勾：只在 active 且有修改未儲存 (dirty) 時，才在最上層顯示黃色的驚嘆號警告標記 */}
+            {active && dirty && (
+              <span style={{ 
+                position: "absolute", 
+                right: 8, 
+                top: 8, 
+                width: 18, 
+                height: 18, 
+                borderRadius: "50%", 
+                background: T.amber, 
+                display: "flex", 
+                alignItems: "center", 
+                justifyContent: "center",
+                boxShadow: "0 2px 4px rgba(0,0,0,0.4)",
+                border: "1px solid #fff",
+                fontSize: 12,
+                fontWeight: "bold",
+                color: "#fff",
+                zIndex: 10000 // 高於 5px 選擇框，確保正常疊放
+              }}>
+                !
+              </span>
+            )}
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 4, padding: "6px 8px 7px", background: "transparent" }}>
+            <span style={{ 
+              flex: 1, 
+              fontSize: 14, 
+              fontWeight: active ? 700 : 500, 
+              color: active ? "#fff" : T.text, 
+              whiteSpace: "nowrap", 
+              overflow: "hidden", 
+              textOverflow: "ellipsis" 
+            }}>
+              {name}
+            </span>
+            {!factory && (
+              <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
+                <button 
+                  onClick={(e) => { e.stopPropagation(); onEdit(); }} 
+                  title="編輯名稱與備註" 
+                  style={{ 
+                    background: "none", 
+                    border: "none", 
+                    cursor: "pointer", 
+                    color: T.dim, 
+                    fontSize: 14, 
+                    padding: "2px", 
+                    lineHeight: 1,
+                    opacity: 0.7,
+                    transition: "opacity 0.2s"
+                  }}
+                >
+                  ✎
+                </button>
+                <button 
+                  onClick={(e) => { e.stopPropagation(); onDelete(); }} 
+                  title="刪除" 
+                  style={{ 
+                    background: "none", 
+                    border: "none", 
+                    cursor: "pointer", 
+                    color: T.dim, 
+                    fontSize: 14, 
+                    padding: "2px", 
+                    lineHeight: 1,
+                    opacity: 0.7,
+                    transition: "opacity 0.2s"
+                  }}
+                >
+                  ✕
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ============================================================================
+// 4. React App 主要元件 (Main Application Component)
+// ============================================================================
+export default function App() {
+  const [st, setSt] = useState(JSON.parse(JSON.stringify(DEF)));
+  const [block, setBlock] = useState("matrix");
+  const [selAxis, setSelAxis] = useState("R");
+  const [scenes, setScenes] = useState([]);            
+  const [activeScene, setActiveScene] = useState("std"); 
+  
+  // 深度比對當前狀態與載入場景資料，以即時判定設定是否被修改過 (isDirty)
+  const getActiveSceneData = () => {
+    if (activeScene === "std") return DEF;
+    const curSc = scenes.find((x) => x.id === activeScene);
+    return curSc ? curSc.data : DEF;
+  };
+  // [設計決策] dirty 採「整個 st 狀態深度比對」，因此 block 的 on/off 切換也會被算為「已修改」，
+  // 即使數值仍為中性 (例如 Matrix on 但所有值為 0)。這是刻意的，不是疏漏，理由：
+  //   1. Scene File 儲存/還原的是「完整狀態」，含所有 on/off 開關。若 on/off 不算 dirty，
+  //      使用者打開某功能卻不被提示儲存，該開關狀態就會在未存檔時遺失，造成場景無法完整重現。
+  //   2. 「打開某功能」本身即是一種使用者意圖的表達，值得被納入場景。
+  // 取捨：唯一可議的邊界是「on 了但值全中性、輸出實際未變」仍標記 dirty，目前接受此行為。
+  // 若 PM 定義「修改」須以『實際影響畫面的有效值』為準，可改用 blockActive() 系列做有效性判定。
+  const isDirty = JSON.stringify(st) !== JSON.stringify(getActiveSceneData());
+
+  const [saveOpen, setSaveOpen] = useState(false);
+  const [libOpen, setLibOpen] = useState(false);
+  const [scName, setScName] = useState("");
+  const [scRemark, setScRemark] = useState("");
+  const [editingScene, setEditingScene] = useState(null); 
+  const [edName, setEdName] = useState("");
+  const [edRemark, setEdRemark] = useState("");
+  const [stdThumb, setStdThumb] = useState(null);
+  const [scope, setScope] = useState("vector");
+  const [showScope, setShowScope] = useState(true);
+  const [bypass, setBypass] = useState(false);
+  const [toast, setToast] = useState("");
+  const [imgLoaded, setImgLoaded] = useState(false);
+  const [deletingScene, setDeletingScene] = useState(null);
+
+  // 選單頁面狀態："paint" (Paint / Look), "video" (Video & Audio)
+  const [activeMenu, setActiveMenu] = useState("paint");
+
+  // Multi-Matrix 樣式狀態："wheel" (雷達色環), "eq" (色彩等化器)
+
+  // Multi-Matrix 聚焦態
+  const [isFocused, setIsFocused] = useState(false);
+  const [multiStyle, setMultiStyle] = useState("wheel"); // "wheel" 雷達色環 | "eq" 色彩等化器(兩種 UX demo)
+
+  // Video & Audio 設置狀態
+  const [videoSettings, setVideoSettings] = useState({
+    powerFreq: "59.94Hz",
+    videoOutRes: "1080μP/59",
+    themeMode: "Standard",
+    streamRes: "1920x1080",
+    streamBitrate: "Auto",
+    streamEncode: "H.264",
+    streamFps: "60",
+    streamI_Vop: 10,
+    streamGop: 30,
+    streamCompat: "Off",
+    streamRateCtrl: "VBR",
+    audioInputType: "Line In",
+    audioVolume: 5,
+    usbAudioEnable: "Enable",
+    audioEncode: "AAC",
+    audioSampleRate: "48K"
+  });
+
+  const updVideo = useCallback((k, v) => {
+    setVideoSettings((s) => ({ ...s, [k]: v }));
+  }, []);
+
+  // 引用 DOM 節點
+  const preRef = useRef(null);   
+  const scRef = useRef(null);    
+  const baseRef = useRef(null);  
+  const baseDragRef = useRef(null);
+  const baseCanvasRef = useRef(null);
+  const baseCanvasDragRef = useRef(null);
+  const tempDragCanvasRef = useRef(null); // 拖曳時的低解析度暫存 canvas。
+  // [變更] 原本掛在 window.__tempDragCanvas (全域,React 反模式,會跨實例污染且不隨卸載清理),
+  //   已改為 useRef,生命週期隨元件管理。
+
+  const [isDragging, setIsDragging] = useState(false);
+  const startDrag = useCallback(() => setIsDragging(true), []);
+  const endDrag = useCallback(() => setIsDragging(false), []);
+
+  // 狀態更新工具
+  const upd = useCallback((k, v) => { 
+    setSt((s) => ({ ...s, [k]: v })); 
+  }, []);
+  
+  const updAxis = (axis, key, v) => { 
+    setSt((s) => ({ ...s, axes: { ...s.axes, [axis]: { ...s.axes[axis], [key]: v } } })); 
+  };
+  
+  const flash = (m) => { 
+    setToast(m); 
+    setTimeout(() => setToast(""), 1800); 
+  };
+
+  // ==========================================================================
+  // A. 圖片載入與備用方案處理 (Image Loader & Fallback Logic)
+  // ==========================================================================
+  useEffect(() => {
+    const img = new Image();
+    
+    img.onerror = () => {
+      console.warn("外部背景圖未尋獲，改用預設的高畫質訪談直播間 Canvas 模擬畫面。");
+      const cv = document.createElement("canvas");
+      cv.width = SW;
+      cv.height = SH;
+      const ctx = cv.getContext("2d");
+      
+      drawFallbackScene(ctx);
+      
+      baseRef.current = ctx.getImageData(0, 0, SW, SH);
+      baseCanvasRef.current = cv;
+
+      // 建立 320x180 縮小版用於拖曳效能優化
+      const cvDrag = document.createElement("canvas");
+      cvDrag.width = 320;
+      cvDrag.height = 180;
+      const ctxDrag = cvDrag.getContext("2d");
+      ctxDrag.drawImage(cv, 0, 0, SW, SH, 0, 0, 320, 180);
+      baseDragRef.current = ctxDrag.getImageData(0, 0, 320, 180);
+      baseCanvasDragRef.current = cvDrag;
+
+      setStdThumb(cv.toDataURL("image/jpeg", 0.55));
+      setImgLoaded(true);
+    };
+
+    img.onload = () => {
+      const cv = document.createElement("canvas"); 
+      cv.width = SW; 
+      cv.height = SH;
+      const ctx = cv.getContext("2d");
+      
+      const imgRatio = img.width / img.height;
+      const cvRatio = SW / SH;
+      let sx = 0, sy = 0, sw = img.width, sh = img.height;
+      if (imgRatio > cvRatio) {
+        sw = img.height * cvRatio;
+        sx = (img.width - sw) / 2;
+      } else {
+        sh = img.width / cvRatio;
+        sy = (img.height - sh) / 2;
+      }
+      ctx.drawImage(img, sx, sy, sw, sh, 0, 0, SW, SH);
+      
+      baseRef.current = ctx.getImageData(0, 0, SW, SH);
+      baseCanvasRef.current = cv;
+
+      // 建立 320x180 縮小版用於拖曳效能優化
+      const cvDrag = document.createElement("canvas");
+      cvDrag.width = 320;
+      cvDrag.height = 180;
+      const ctxDrag = cvDrag.getContext("2d");
+      ctxDrag.drawImage(cv, 0, 0, SW, SH, 0, 0, 320, 180);
+      baseDragRef.current = ctxDrag.getImageData(0, 0, 320, 180);
+      baseCanvasDragRef.current = cvDrag;
+
+      setStdThumb(cv.toDataURL("image/jpeg", 0.55));
+      setImgLoaded(true);
+    };
+
+    img.src = "/meeting_room.png?t=" + Date.now();
+  }, []);
+
+  // ==========================================================================
+  // B. 即時影像運算與示波器繪製副作用 (Real-time DSP Processing Loop)
+  // ==========================================================================
+  useEffect(() => {
+    const cvs = preRef.current; 
+    if (!cvs) return;
+
+    // 判斷是否正在拖曳，使用對應解析度的快照
+    const useDrag = isDragging && baseDragRef.current;
+    const currentW = useDrag ? 320 : SW;
+    const currentH = useDrag ? 180 : SH;
+    const base = useDrag ? baseDragRef.current : baseRef.current;
+    if (!base) return;
+
+    const ctx = cvs.getContext("2d");
+    const sd = base.data;
+    let work = new Uint8ClampedArray(sd.length);
+    
+    // --- 預先計算演算法常數，避免在像素大迴圈中重複計算或建立閉包 ---
+    
+    // 1. Tone 常數
+    const bl = st.black / 50 * 0.12;
+    const kneeOn = st.kneeOn && !st.autoKnee;
+    const kp = st.kneePoint / 109;
+    const slope = 0.5 + (st.kneeSlope + 5) / 20;
+
+    // 2. Matrix 常數
+    const matrixOn = st.matrixOn;
+    const levelOn = st.level !== 0;
+    const sat = 1 + st.level / 120;
+    const phaseOn = st.phase !== 0;
+    
+    let m00 = 0, m01 = 0, m02 = 0;
+    let m10 = 0, m11 = 0, m12 = 0;
+    let m20 = 0, m21 = 0, m22 = 0;
+    if (matrixOn && phaseOn) {
+      const deg = (st.phase / 99) * 30;
+      const a = (deg * Math.PI) / 180;
+      const cosVal = Math.cos(a);
+      const sinVal = Math.sin(a);
+      m00 = 0.213 + cosVal * 0.787 - sinVal * 0.213;
+      m01 = 0.715 - cosVal * 0.715 - sinVal * 0.715;
+      m02 = 0.072 - cosVal * 0.072 + sinVal * 0.928;
+      m10 = 0.213 - cosVal * 0.213 + sinVal * 0.143;
+      m11 = 0.715 + cosVal * 0.285 + sinVal * 0.14;
+      m12 = 0.072 - cosVal * 0.072 - sinVal * 0.283;
+      m20 = 0.213 - cosVal * 0.213 - sinVal * 0.787;
+      m21 = 0.715 - cosVal * 0.715 + sinVal * 0.715;
+      m22 = 0.072 + cosVal * 0.928 + sinVal * 0.072;
+    }
+
+    const kMix = 0.75;
+    const m_rg = (st.rg / 100) * kMix;
+    const m_rb = (st.rb / 100) * kMix;
+    const m_gr = (st.gr / 100) * kMix;
+    const m_gb = (st.gb / 100) * kMix;
+    const m_br = (st.br / 100) * kMix;
+    const m_bg = (st.bg / 100) * kMix;
+
+    // 3. Multi-Matrix 活躍軸預篩選
+    const activeAxes = [];
+    if (st.multiOn) {
+      AXIS16.forEach((a) => {
+        const ax = st.axes[a];
+        if (ax && (ax.hue !== 0 || ax.sat !== 0)) {
+          activeAxes.push({
+            name: a,
+            hueAngle: AXIS_HUE[a],
+            hueAdj: (ax.hue / 99) * 22,
+            satAdj: (ax.sat / 99) * 0.85
+          });
+        }
+      });
+    }
+
+    // --- 像素大迴圈 (完全 GC-free 零記憶體分配) ---
+    for (let i = 0; i < sd.length; i += 4) {
+      let R = sd[i] / 255;
+      let G = sd[i + 1] / 255;
+      let B = sd[i + 2] / 255;
+      
+      if (!bypass) {
+        // A. 套用 Tone 控制
+        R = R + bl * (1 - R);
+        G = G + bl * (1 - G);
+        B = B + bl * (1 - B);
+        if (kneeOn) {
+          if (R > kp) R = kp + (R - kp) * slope;
+          if (G > kp) G = kp + (G - kp) * slope;
+          if (B > kp) B = kp + (B - kp) * slope;
+        }
+
+        // B. 套用 Matrix 控制
+        if (matrixOn) {
+          // 色相旋轉 Phase
+          if (phaseOn) {
+            const rotR = R * m00 + G * m01 + B * m02;
+            const rotG = R * m10 + G * m11 + B * m12;
+            const rotB = R * m20 + G * m21 + B * m22;
+            R = rotR; G = rotG; B = rotB;
+          }
+          // 混合矩陣
+          const nR = R + m_rg * (R - G) + m_rb * (R - B);
+          const nG = G + m_gr * (G - R) + m_gb * (G - B);
+          const nB = B + m_br * (B - R) + m_bg * (B - G);
+          R = nR; G = nG; B = nB;
+          // 飽和度 Level
+          if (levelOn) {
+            const Y = 0.2126 * R + 0.7152 * G + 0.0722 * B;
+            R = Y + (R - Y) * sat;
+            G = Y + (G - Y) * sat;
+            B = Y + (B - Y) * sat;
+          }
+        }
+
+        // C. 套用 Multi-Matrix 控制 (GC-free)
+        if (activeAxes.length > 0) {
+          // rgb2hsv
+          const mx = Math.max(R, G, B), mn = Math.min(R, G, B), d = mx - mn;
+          let h = 0;
+          if (d > 0) {
+            if (mx === R) h = ((G - B) / d) % 6;
+            else if (mx === G) h = (B - R) / d + 2;
+            else h = (R - G) / d + 4;
+            h *= 60;
+            if (h < 0) h += 360;
+          }
+          const sVal = mx === 0 ? 0 : d / mx;
+          const vVal = mx;
+
+          if (sVal >= 0.05) {
+            // 尋找距離最近的活躍軸
+            let bestAx = null;
+            let bd = 999;
+            for (let j = 0; j < activeAxes.length; j++) {
+              const axObj = activeAxes[j];
+              const dist = Math.abs(((axObj.hueAngle - h + 540) % 360) - 180);
+              if (dist < bd) {
+                bd = dist;
+                bestAx = axObj;
+              }
+            }
+            
+            if (bestAx && bd < 22.5) {
+              const w = 1 - bd / 22.5; // 與 22.5° 軸間距對齊 (見 applyMulti 註解)
+              let newH = h + bestAx.hueAdj * w;
+              let newS = sVal * (1 + bestAx.satAdj * w);
+              if (newS > 1) newS = 1;
+              
+              // hsv2rgb
+              newH = ((newH % 360) + 360) % 360;
+              const c_val = vVal * newS;
+              const x_val = c_val * (1 - Math.abs(((newH / 60) % 2) - 1));
+              const m_val = vVal - c_val;
+              let r_val = 0, g_val = 0, b_val = 0;
+              if (newH < 60) { r_val = c_val; g_val = x_val; }
+              else if (newH < 120) { r_val = x_val; g_val = c_val; }
+              else if (newH < 180) { g_val = c_val; b_val = x_val; }
+              else if (newH < 240) { g_val = x_val; b_val = c_val; }
+              else if (newH < 300) { r_val = x_val; b_val = c_val; }
+              else { r_val = c_val; b_val = x_val; }
+              
+              R = r_val + m_val;
+              G = g_val + m_val;
+              B = b_val + m_val;
+            }
+          }
+        }
+      }
+      
+      work[i] = c255(R * 255); 
+      work[i + 1] = c255(G * 255); 
+      work[i + 2] = c255(B * 255); 
+      work[i + 3] = 255;
+    }
+    
+    if (!bypass && st.detailOn && st.detail !== 0) {
+      work = applyDetail(work, currentW, currentH, st.detail);
+    }
+    
+    const out = new ImageData(work, currentW, currentH);
+    
+    if (useDrag) {
+      if (!tempDragCanvasRef.current) {
+        const c = document.createElement("canvas");
+        c.width = 320; c.height = 180;
+        tempDragCanvasRef.current = c;
+      }
+      const tempCtx = tempDragCanvasRef.current.getContext("2d");
+      tempCtx.putImageData(out, 0, 0);
+
+      ctx.clearRect(0, 0, SW, SH);
+      ctx.drawImage(tempDragCanvasRef.current, 0, 0, 320, 180, 0, 0, SW, SH);
+    } else {
+      ctx.putImageData(out, 0, 0);
+    }
+
+    // --- 示波器繪製 (在拖曳時也使用對應解析度的 work，速度大幅提升) ---
+    if (showScope && scRef.current) {
+      const g = scRef.current.getContext("2d"), W = scRef.current.width, H = scRef.current.height;
+      g.fillStyle = "rgba(8, 12, 10, 0.92)"; 
+      g.fillRect(0, 0, W, H);
+      
+      const dd = work;
+
+      // [設計決策 / 誠實標註] 以下三種監看 (向量/波形/直方圖) 為真實的廣播工業工具:
+      //   向量示波器 — 色相=角度、飽和=半徑;含 75% 色靶與 ~123°(10:30) 膚色線概念。
+      //   波形圖     — 0–100 IRE 亮度分佈,用於曝光/Knee/Black。
+      //   直方圖     — RGB 三色版亮度分佈。
+      // 數學 (BT.709 亮度係數、Cb/Cr 色差) 為標準公式;但此處「繪製為示意級」,非儀器級精確視覺
+      // (真儀器有更密的刻度盤、I/Q 線、連續螢光軌跡且經校準)。最終視覺需另開規格或接韌體 scope 輸出。[PM]
+      if (scope === "vector") {
+        const cx = W / 2, cy = H / 2, Rr = Math.min(W, H) / 2 - 10, cs = Rr / 0.5;
+        
+        g.strokeStyle = "rgba(70, 224, 138, 0.25)"; 
+        g.lineWidth = 1;
+        g.beginPath(); 
+        g.arc(cx, cy, Rr, 0, 7); 
+        g.stroke();
+        
+        g.beginPath(); 
+        g.moveTo(cx - Rr, cy); 
+        g.lineTo(cx + Rr, cy); 
+        g.moveTo(cx, cy - Rr); 
+        g.lineTo(cx, cy + Rr); 
+        g.stroke();
+        
+        g.strokeStyle = "rgba(255, 174, 110, 0.5)"; 
+        g.setLineDash([3, 3]);
+        g.beginPath(); 
+        g.moveTo(cx, cy); 
+        g.lineTo(cx + Math.cos(-123 * Math.PI / 180) * Rr, cy - Math.sin(-123 * Math.PI / 180) * Rr); 
+        g.stroke(); 
+        g.setLineDash([]);
+        
+        [["R", 191, 0, 0], ["YL", 191, 191, 0], ["G", 0, 191, 0], ["CY", 0, 191, 191], ["B", 0, 0, 191], ["MG", 191, 0, 191]].forEach(([l, r0, g0, b0]) => {
+          const Y = (0.2126 * r0 + 0.7152 * g0 + 0.0722 * b0) / 255;
+          const x = cx + ((b0 / 255 - Y) / 1.8556) * cs;
+          const y = cy - ((r0 / 255 - Y) / 1.5748) * cs;
+          g.strokeStyle = "rgba(220, 230, 225, 0.5)"; 
+          g.strokeRect(x - 3.5, y - 3.5, 7, 7); 
+          g.fillStyle = "rgba(160, 180, 175, 0.9)"; 
+          g.font = "14px monospace"; 
+          g.fillText(l, x + 6, y - 6);
+        });
+        
+        g.fillStyle = "rgba(70, 224, 138, 0.75)";
+        const step = useDrag ? 8 : 24; // 拖曳時像素較少，採樣間距可調小；平時調大
+        for (let i = 0; i < dd.length; i += step) { 
+          const r = dd[i] / 255, gg = dd[i + 1] / 255, b = dd[i + 2] / 255;
+          const Y = 0.2126 * r + 0.7152 * gg + 0.0722 * b; 
+          g.fillRect(cx + ((b - Y) / 1.8556) * cs, cy - ((r - Y) / 1.5748) * cs, 1.3, 1.3); 
+        }
+      } else if (scope === "wave") {
+        g.lineWidth = 1; 
+        g.font = "14px monospace";
+        [0, 0.5, 1].forEach((p) => { 
+          const y = H - 8 - p * (H - 16); 
+          g.strokeStyle = "rgba(120, 140, 150, 0.25)"; 
+          g.beginPath(); 
+          g.moveTo(24, y); 
+          g.lineTo(W - 4, y); 
+          g.stroke(); 
+          g.fillStyle = "rgba(150, 165, 175, 0.8)"; 
+          g.fillText(Math.round(p * 100), 1, y + 4); 
+        });
+        g.fillStyle = "rgba(70, 224, 138, 0.55)";
+        const step = useDrag ? 4 : 16;
+        for (let i = 0; i < dd.length; i += step) { 
+          const px = (i / 4) % currentW;
+          const Y = (0.2126 * dd[i] + 0.7152 * dd[i + 1] + 0.0722 * dd[i + 2]) / 255; 
+          g.fillRect(24 + (px / currentW) * (W - 28), H - 8 - Y * (H - 16), 1.2, 1.2); 
+        }
+      } else {
+        const bins = 96;
+        const Rh = new Float32Array(bins), Gh = new Float32Array(bins), Bh = new Float32Array(bins);
+        const step = useDrag ? 2 : 8;
+        for (let i = 0; i < dd.length; i += step) {
+          Rh[Math.min(bins - 1, (dd[i] / 256 * bins) | 0)]++;
+          Gh[Math.min(bins - 1, (dd[i + 1] / 256 * bins) | 0)]++;
+          Bh[Math.min(bins - 1, (dd[i + 2] / 256 * bins) | 0)]++;
+        }
+        let mx = 1;
+        for (let i = 0; i < bins; i++) mx = Math.max(mx, Rh[i], Gh[i], Bh[i]);
+        const drawHist = (arr, col) => {
+          g.fillStyle = col;
+          g.beginPath();
+          g.moveTo(4, H - 4);
+          for (let i = 0; i < bins; i++) g.lineTo(4 + (i / (bins - 1)) * (W - 8), H - 4 - (arr[i] / mx) * (H - 14));
+          g.lineTo(W - 4, H - 4);
+          g.closePath();
+          g.fill();
+        };
+        drawHist(Rh, "rgba(255,90,80,0.45)");
+        drawHist(Gh, "rgba(70,224,138,0.45)");
+        drawHist(Bh, "rgba(90,168,255,0.45)");
+        g.font = "14px monospace"; g.fillStyle = "rgba(150,165,175,0.7)";
+        g.fillText("暗", 5, 14); g.fillText("亮", W - 20, 14);
+      }
+    }
+  }, [st, bypass, scope, showScope, imgLoaded, isDragging]);
+
+  useEffect(() => {
+    if (block === "knee" || block === "black") setScope("wave");
+    if (block === "matrix" || block === "multi") setScope("vector");
+  }, [block]);
+
+  // ==========================================================================
+  // C. 預設場景存取與狀態管理邏輯 (Preset & State Actions)
+  // ==========================================================================
+  const blockActive = (id) => {
+    if (id === "matrix") return st.matrixOn && (st.level || st.phase || st.rg || st.rb || st.gr || st.gb || st.br || st.bg);
+    if (id === "multi") return st.multiOn && AXIS16.some((a) => st.axes[a].hue || st.axes[a].sat);
+    if (id === "detail") return st.detailOn && st.detail !== 0;
+    if (id === "knee") return st.kneeOn;
+    if (id === "black") return st.black !== 0;
+    return false;
+  };
+
+  const snapState = () => JSON.parse(JSON.stringify({ ...st }));
+  
+  const grabThumb = () => { 
+    try { 
+      return preRef.current?.toDataURL("image/jpeg", 0.55) || null; 
+    } catch { 
+      return null; 
+    } 
+  };
+  
+  const loadStandard = () => { 
+    setSt(JSON.parse(JSON.stringify(DEF))); 
+    setActiveScene("std"); 
+    flash("已載入 Standard(原廠預設)"); 
+  };
+  
+  const saveNewScene = () => {
+    if (scenes.length >= 16) return;
+    const name = scName.trim() || `Scene ${scenes.length + 1}`;
+    const id = Date.now();
+    setScenes((sc) => [...sc, { 
+      id, name, remark: scRemark.trim(), 
+      savedAt: new Date().toLocaleString("zh-TW", { hour12: false }), 
+      thumb: grabThumb(), data: snapState() 
+    }]);
+    setActiveScene(id); 
+    setSaveOpen(false); 
+    setScName(""); 
+    setScRemark("");
+    flash(`已儲存「${name}」`);
+  };
+  
+  const loadScene = (s) => { 
+    setSt(JSON.parse(JSON.stringify(s.data))); 
+    setActiveScene(s.id); 
+    flash(`已載入「${s.name}」`); 
+  };
+  
+  const updateScene = (s) => { 
+    setScenes((sc) => sc.map((x) => x.id === s.id ? { 
+      ...x, data: snapState(), thumb: grabThumb(), 
+      savedAt: new Date().toLocaleString("zh-TW", { hour12: false }) 
+    } : x)); 
+    setActiveScene(s.id); 
+    flash(`已更新「${s.name}」`); 
+  };
+  
+  const deleteScene = (s) => { 
+    setScenes((sc) => sc.filter((x) => x.id !== s.id)); 
+    if (activeScene === s.id) setActiveScene(null); 
+    flash(`已刪除「${s.name}」`); 
+  };
+
+  const saveSceneMeta = () => {
+    setScenes((sc) => sc.map((x) => x.id === editingScene ? { ...x, name: edName.trim() || x.name, remark: edRemark.trim() } : x));
+    setEditingScene(null);
+    flash("已更新場景資訊");
+  };
+
+  // ==========================================================================
+  // D. 面板渲染路由器 (Parameter Panels Switch)
+  // ==========================================================================
+  const renderBlock = () => {
+    if (block === "matrix") {
+      return (
+        <div id="aver-control-params-matrix">
+          <BlockHeader 
+            title="Matrix · User Matrix" 
+            sub="色彩矩陣 — 調整各顏色通道之間的關係" 
+            right={<Toggle on={st.matrixOn} onChange={(v) => upd("matrixOn", v)} label={st.matrixOn ? "ON" : "OFF"} />} 
+          />
+          <div style={{ opacity: st.matrixOn ? 1 : 0.35, pointerEvents: st.matrixOn ? "auto" : "none" }}>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", columnGap: 26 }}>
+              {MATRIX_KEYS.map(([k, lb, hint]) => (
+                <Slider key={k} k={k} label={lb} hint={hint} min={-99} max={99} val={st[k]} onChange={(v) => upd(k, v)} onStartDrag={startDrag} onEndDrag={endDrag} />
+              ))}
+            </div>
+            <Note>Level / Phase 影響整體；六個色差軸彼此交互影響，建議對照向量示波器小幅調整。</Note>
+          </div>
+        </div>
+      );
+    }
+    
+    if (block === "multi") {
+      // ====================================================================
+      // Multi-Matrix 區塊 — 提供三種 UX 呈現 (由 multiStyle 切換,供設計比較):
+      //   "wheel" 雷達色環 — 選擇態(16軸環) ↔ 聚焦態(只留選中軸、整環變該色相,專注單軸微調)
+      //   "fader" 推桿台   — 16 軸 × S/H 雙直立推桿(混音台風格,命中區大,適合大幅塑形與總覽)
+      //   "eq"    色卡矩陣 — 2×8 卡片密集網格(數值精確、可一次綜覽全部 16 軸)
+      // 三者共用同一份狀態 (st.axes / selAxis),僅呈現方式不同。
+      // angUI 為本地等分表 (22.5°),與全域 AXIS_HUE 一致 (環顯示與底層運算對齊)。
+      // ====================================================================
+      const ax = st.axes[selAxis];
+      // 16 軸等分色相環,每軸 22.5°,R 軸在環頂 (0°)
+      const angUI = {};
+      AXIS16.forEach((a, i) => { const idxR = AXIS16.indexOf("R"); angUI[a] = ((i - idxR) * 22.5 + 360) % 360; });
+
+      // 聚焦態:整個環反映「選中軸目前的 Hue/Sat 調整」
+      const fHue = (angUI[selAxis] + (ax.hue / 99) * 22.5 + 360) % 360;
+      const fSat = Math.max(8, Math.min(100, 70 + (ax.sat / 99) * 30));
+      const ringSelect = "conic-gradient(from 0deg, hsl(0 85% 58%), hsl(60 85% 55%), hsl(120 70% 50%), hsl(180 75% 52%), hsl(240 85% 62%), hsl(300 85% 60%), hsl(360 85% 58%))";
+      const ringFocus = `conic-gradient(from ${fHue - 90}deg, hsl(${fHue} ${fSat}% 22%), hsl(${fHue} ${fSat}% 58%) 50%, hsl(${fHue} ${fSat}% 22%))`;
+      const mOff = !st.multiOn;
+
+      return (
+        <div id="aver-control-params-multi">
+          <BlockHeader
+            title="Multi-Matrix"
+            sub="16 軸分區 — 只調整特定色相範圍，不影響其他顏色"
+            right={
+              <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+                {/* 兩種 UX 呈現方式切換 (demo) */}
+                <div style={{ display: "flex", background: "#101216", border: `1px solid ${T.line}`, borderRadius: 6, padding: 3, gap: 4, alignItems: "center" }}>
+                  {[["wheel", "雷達色環"], ["fader", "推桿台"], ["eq", "色卡矩陣"]].map(([id, lb]) => (
+                    <button key={id}
+                      onClick={() => { setMultiStyle(id); setIsFocused(false); }}
+                      style={{ padding: "4px 10px", fontSize: 13, cursor: "pointer", borderRadius: 4, border: "none",
+                        background: multiStyle === id ? T.blue : "transparent",
+                        color: multiStyle === id ? "#fff" : T.dim, fontFamily: fUI, transition: "all .15s" }}>
+                      {lb}
+                    </button>
+                  ))}
+                </div>
+                <Toggle on={st.multiOn} onChange={(v) => upd("multiOn", v)} label={st.multiOn ? "ON" : "OFF"} />
+              </div>
+            }
+          />
+          <div style={{ opacity: st.multiOn ? 1 : 0.35, pointerEvents: st.multiOn ? "auto" : "none", display: "flex", gap: 24, flexWrap: "wrap", alignItems: "center", width: "100%", boxSizing: "border-box" }}>
+
+            {multiStyle === "wheel" ? (
+              <div style={{ display: "flex", gap: 24, flexWrap: "wrap", alignItems: "center", width: "100%" }}>
+                {/* === 雷達色環:選擇態(16軸) ↔ 聚焦態(單軸) === */}
+                <div style={{ position: "relative", width: 290, height: 290, flexShrink: 0 }}>
+                  <div style={{ position: "absolute", inset: 16, borderRadius: "50%", background: isFocused ? ringFocus : ringSelect, filter: "blur(18px)", opacity: isFocused ? 0.4 : 0.22, transition: "opacity .25s, background .2s" }} />
+                  <div style={{ position: "absolute", inset: 16, borderRadius: "50%", background: isFocused ? ringFocus : ringSelect, WebkitMask: "radial-gradient(closest-side, transparent 70%, #000 71%)", mask: "radial-gradient(closest-side, transparent 70%, #000 71%)", opacity: 0.9, transition: "background .2s" }} />
+                  <div style={{ position: "absolute", inset: 48, borderRadius: "50%", border: `1px dashed ${T.line2}`, animation: isFocused ? "none" : "mmspin 30s linear infinite", opacity: isFocused ? 0.3 : 1, transition: "opacity .2s" }} />
+
+                  {/* 動態 SVG 雷達網格與連接線 */}
+                  <svg style={{ position: "absolute", inset: 0, width: "100%", height: "100%", pointerEvents: "none", zIndex: 5 }}>
+                    {/* 16 條放射狀均勻參考虛線 */}
+                    {AXIS16.map((a) => {
+                      const baseAng = (angUI[a] - 90) * Math.PI / 180;
+                      const dispAng = (isFocused && selAxis === a) ? (fHue - 90) * Math.PI / 180 : baseAng;
+                      const rx = 145 + Math.cos(dispAng) * 114;
+                      const ry = 145 + Math.sin(dispAng) * 114;
+                      const lineHide = isFocused && selAxis !== a;
+                      return (
+                        <line 
+                          key={a}
+                          x1={145} 
+                          y1={145} 
+                          x2={rx} 
+                          y2={ry} 
+                          stroke="rgba(255, 255, 255, 0.08)" 
+                          strokeWidth="1" 
+                          strokeDasharray="2, 4" 
+                          style={{
+                            opacity: lineHide ? 0 : 1,
+                            transition: "opacity 0.25s ease-out"
+                          }}
+                        />
+                      );
+                    })}
+                    {/* 雷達連接多邊形參考線 */}
+                    <polygon
+                      points={AXIS16.map((a) => {
+                        const baseAng = (angUI[a] - 90) * Math.PI / 180;
+                        const dispAng = (isFocused && selAxis === a) ? (fHue - 90) * Math.PI / 180 : baseAng;
+                        const px = 145 + Math.cos(dispAng) * 114;
+                        const py = 145 + Math.sin(dispAng) * 114;
+                        return `${px},${py}`;
+                      }).join(" ")}
+                      fill="rgba(30, 155, 240, 0.04)"
+                      stroke="rgba(30, 155, 240, 0.3)"
+                      strokeWidth="1"
+                      style={{ 
+                        opacity: isFocused ? 0 : 1, 
+                        transition: "opacity .25s ease-out" 
+                      }}
+                    />
+                  </svg>
+
+                  {AXIS16.map((a) => {
+                    const isSel = selAxis === a;
+                    const hide = isFocused && !isSel;
+                    const baseAng = (angUI[a] - 90) * Math.PI / 180;
+                    const dispAng = (isFocused && isSel) ? (fHue - 90) * Math.PI / 180 : baseAng;
+                    const x = 145 + Math.cos(dispAng) * 114, y = 145 + Math.sin(dispAng) * 114;
+                    const nodeHue = (isFocused && isSel) ? fHue : angUI[a];
+                    const [r, g, b] = hsv2rgb(nodeHue, (isFocused && isSel) ? fSat / 100 : 0.85, 0.95);
+                    const touched = st.axes[a].hue !== 0 || st.axes[a].sat !== 0;
+                    return (
+                      <button key={a}
+                        onClick={() => { if (mOff) return; setSelAxis(a); setIsFocused(true); }}
+                        style={{
+                          position: "absolute", left: x, top: y, transform: "translate(-50%,-50%)",
+                          width: isSel ? 34 : 24, height: isSel ? 34 : 24, borderRadius: "50%",
+                          cursor: (mOff || hide) ? "default" : "pointer",
+                          background: `rgb(${r * 255},${g * 255},${b * 255})`,
+                          border: isSel ? "2px solid #fff" : touched ? `2px solid ${T.amber}` : "1px solid rgba(0,0,0,0.55)",
+                          boxShadow: isSel ? `0 0 18px hsl(${nodeHue} 90% 60% / 0.9)` : touched ? `0 0 8px ${T.amber}66` : "none",
+                          fontSize: 13, fontFamily: fMono, fontWeight: 700, color: "rgba(0,0,0,0.8)",
+                          opacity: hide ? 0 : 1, pointerEvents: (mOff || hide) ? "none" : "auto",
+                          transition: "all .25s", padding: 0, zIndex: 10,
+                        }}>
+                        {a}
+                      </button>
+                    );
+                  })}
+
+                  <div style={{ position: "absolute", inset: 68, borderRadius: "50%", background: "radial-gradient(circle at 38% 30%, #181c21, #0e1114)", border: `1px solid ${isFocused ? `hsl(${fHue} 60% 45%)` : T.line2}`, boxShadow: "inset 0 0 24px rgba(0,0,0,0.6)", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 1, transition: "border-color .2s", zIndex: 20 }}>
+                    {isFocused ? (
+                      <>
+                        <span style={{ fontSize: 11, letterSpacing: 1.5, color: T.faint, fontFamily: fMono }}>調整中</span>
+                        <span style={{ fontSize: 26, fontWeight: 700, color: T.text, lineHeight: 1.05 }}>{selAxis}</span>
+                        <div style={{ display: "flex", gap: 10, marginTop: 5, fontFamily: fMono, fontSize: 13 }}>
+                          <span style={{ color: ax.hue ? T.blue : T.faint }}>H {ax.hue > 0 ? "+" + ax.hue : ax.hue}</span>
+                          <span style={{ color: ax.sat ? T.amber : T.faint }}>S {ax.sat > 0 ? "+" + ax.sat : ax.sat}</span>
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        <span style={{ fontSize: 12, letterSpacing: 2, color: T.faint, fontFamily: fMono }}>選擇色相軸</span>
+                        <span style={{ fontSize: 18, fontWeight: 600, color: T.dim, lineHeight: 1.2, marginTop: 2 }}>16 軸</span>
+                        <span style={{ fontSize: 10.5, color: T.faint, marginTop: 3 }}>點任一節點調整</span>
+                      </>
+                    )}
+                  </div>
+                </div>
+
+                <div style={{ flex: 1, minWidth: 220 }}>
+                  {isFocused ? (
+                    <>
+                      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14 }}>
+                        <button onClick={() => setIsFocused(false)} style={{ display: "flex", alignItems: "center", gap: 5, padding: "5px 11px", fontSize: 13, cursor: "pointer", borderRadius: 6, border: `1px solid ${T.line2}`, background: "transparent", color: T.dim, fontFamily: fUI }}>
+                          ‹ 返回 16 軸
+                        </button>
+                        <span style={{ fontSize: 14, color: T.text, fontWeight: 600 }}>{selAxis} <span style={{ color: T.faint, fontWeight: 400, fontFamily: fMono }}>· 基準 {Math.round(angUI[selAxis])}°</span></span>
+                      </div>
+                      <Slider k="hue" label="Hue" hint="該區色相旋轉" min={-99} max={99} val={ax.hue} onChange={(v) => updAxis(selAxis, "hue", v)} onStartDrag={startDrag} onEndDrag={endDrag} disabled={mOff} />
+                      <Slider k="sat" label="Saturation" hint="該區飽和度" min={-99} max={99} val={ax.sat} onChange={(v) => updAxis(selAxis, "sat", v)} onStartDrag={startDrag} onEndDrag={endDrag} disabled={mOff} />
+                      <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
+                        <MiniBtn onClick={() => { updAxis(selAxis, "hue", 0); updAxis(selAxis, "sat", 0); }} disabled={mOff}>此軸歸零</MiniBtn>
+                        <MiniBtn onClick={() => upd("axes", DEF_AXES())} disabled={mOff}>全部歸零</MiniBtn>
+                      </div>
+                      <Note>環的顏色即時反映此軸調整後的色相與飽和度;Hue 讓色點繞示波器旋轉、Saturation 推離或拉近中心。建議對照向量示波器。</Note>
+                    </>
+                  ) : (
+                    <>
+                      <div style={{ fontSize: 14, color: T.text, fontWeight: 600, marginBottom: 6 }}>選擇要調整的色相軸</div>
+                      <div style={{ fontSize: 12.5, color: T.dim, lineHeight: 1.7, marginBottom: 14 }}>
+                        點色環上任一節點進入調整。<span style={{ color: T.amber }}>橘框</span> = 已調整過的軸。<br />
+                        16 軸等分色相環(每 22.5°),只影響選中的色相範圍,不動其他顏色。
+                      </div>
+                      {AXIS16.some((a) => st.axes[a].hue || st.axes[a].sat) ? (
+                        <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 14 }}>
+                          <span style={{ fontSize: 11.5, color: T.faint, width: "100%", marginBottom: 2 }}>已調整的軸:</span>
+                          {AXIS16.filter((a) => st.axes[a].hue || st.axes[a].sat).map((a) => (
+                            <button key={a} onClick={() => { if (mOff) return; setSelAxis(a); setIsFocused(true); }} style={{ padding: "3px 9px", fontSize: 12, cursor: "pointer", borderRadius: 5, border: `1px solid ${T.amber}`, background: "rgba(245,166,35,0.1)", color: T.amber, fontFamily: fMono }}>
+                              {a} <span style={{ opacity: 0.7 }}>H{st.axes[a].hue >= 0 ? "+" : ""}{st.axes[a].hue} S{st.axes[a].sat >= 0 ? "+" : ""}{st.axes[a].sat}</span>
+                            </button>
+                          ))}
+                        </div>
+                      ) : (
+                        <div style={{ fontSize: 12, color: T.faint, marginBottom: 14 }}>尚未調整任何軸。</div>
+                      )}
+                      <MiniBtn onClick={() => upd("axes", DEF_AXES())} disabled={mOff}>全部歸零</MiniBtn>
+                    </>
+                  )}
+                </div>
+              </div>
+            ) : multiStyle === "fader" ? (
+              /* === 推桿台:16 軸彩色直立雙推桿 (Spectrum Fader Console) ===
+                 [設計決策] 每軸並排兩根直立推桿:左 S(飽和,染該軸色相)、右 H(色相,藍)。
+                 原本 Hue 是推桿下方的窄橫桿(命中區 ~28px,難操控),改為雙直立推桿後命中區=滿高 150px,
+                 且 S/H 視覺語言統一,符合混音台隱喻。VFader 為兩根共用的繪製元件。 */
+              (() => {
+                const FH = 150; // 推桿高度
+                // 單根直立推桿 (S 或 H 共用)
+                const VFader = ({ axis, kind, val, fillColor }) => {
+                  const center = FH / 2;
+                  const amp = (val / 99) * (FH * 0.46);
+                  const fillTop = amp >= 0 ? center - amp : center;
+                  const fillH = Math.abs(amp);
+                  const thumbY = center - amp;
+                  return (
+                    <div style={{ position: "relative", width: 22, height: FH }}>
+                      <div style={{ position: "absolute", left: "50%", top: 0, transform: "translateX(-50%)", width: 7, height: "100%", borderRadius: 4, background: "#0a0c0e", boxShadow: "inset 0 0 4px rgba(0,0,0,0.8)" }} />
+                      <div style={{ position: "absolute", left: 1, right: 1, top: center, height: 1, background: "rgba(255,255,255,0.18)" }} />
+                      <div style={{ position: "absolute", left: "50%", transform: "translateX(-50%)", top: fillTop, width: 7, height: fillH, borderRadius: 4,
+                        background: fillColor, opacity: amp >= 0 ? 0.95 : 0.4, boxShadow: val !== 0 ? `0 0 7px ${fillColor}` : "none" }} />
+                      <div style={{ position: "absolute", left: "50%", top: thumbY, transform: "translate(-50%,-50%)", width: 20, height: 8, borderRadius: 3,
+                        background: "#fff", boxShadow: `0 1px 4px rgba(0,0,0,0.7), 0 0 6px ${val !== 0 ? fillColor : "transparent"}`, pointerEvents: "none", zIndex: 3 }} />
+                      <input type="range" min={-99} max={99} value={val} disabled={mOff}
+                        onChange={(e) => updAxis(axis, kind, parseInt(e.target.value))}
+                        onClick={(e) => e.stopPropagation()} onMouseDown={startDrag} onTouchStart={startDrag} onMouseUp={endDrag} onTouchEnd={endDrag}
+                        className="tr-vfader"
+                        style={{ position: "absolute", inset: 0, opacity: 0, zIndex: 4 }} />
+                    </div>
+                  );
+                };
+                return (
+                  <div style={{ width: "100%", display: "flex", flexDirection: "column", gap: 12 }}>
+                    <div style={{ fontSize: 14, color: T.dim, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                      <span>每軸兩根推桿:<span style={{ color: T.amber }}>S</span> 飽和度、<span style={{ color: T.blue }}>H</span> 色相;往上 = 加、往下 = 減(中線 = 0)。</span>
+                      <button onClick={() => upd("axes", DEF_AXES())} disabled={mOff}
+                        style={{ background: "none", border: "none", color: mOff ? T.faint : T.blue, cursor: mOff ? "default" : "pointer", fontSize: 14, fontFamily: fUI, padding: 0 }}>
+                        全部重設歸零
+                      </button>
+                    </div>
+                    {/* 主控台 */}
+                    <div style={{ position: "relative", background: "linear-gradient(180deg,#15181c,#0c0e11)", border: `1px solid ${T.line}`, borderRadius: 10, padding: "14px 12px 12px", boxShadow: "inset 0 1px 0 rgba(255,255,255,0.04)", overflowX: "auto" }}>
+                      <div style={{ display: "flex", gap: 4, minWidth: "fit-content", justifyContent: "space-between" }}>
+                        {AXIS16.map((a) => {
+                          const axObj = st.axes[a];
+                          const isSel = selAxis === a;
+                          const touched = axObj.hue !== 0 || axObj.sat !== 0;
+                          const ang = angUI[a];
+                          const [r, g, b] = hsv2rgb(ang, 0.9, 0.95);
+                          const col = `rgb(${r * 255},${g * 255},${b * 255})`;
+                          return (
+                            <div key={a} onClick={() => { if (!mOff) setSelAxis(a); }}
+                              style={{ flex: "1 0 58px", maxWidth: 76, display: "flex", flexDirection: "column", alignItems: "center", gap: 5, cursor: mOff ? "default" : "pointer",
+                                padding: "4px 3px 6px", borderRadius: 7, background: isSel ? "rgba(30,155,240,0.10)" : "transparent", border: `1px solid ${isSel ? T.blue : "transparent"}` }}>
+                              {/* 數值列 S / H */}
+                              <div style={{ display: "flex", gap: 8, height: 13 }}>
+                                <span style={{ fontFamily: fMono, fontSize: 10.5, color: axObj.sat ? T.amber : T.faint }}>{axObj.sat > 0 ? "+" + axObj.sat : axObj.sat}</span>
+                                <span style={{ fontFamily: fMono, fontSize: 10.5, color: axObj.hue ? T.blue : T.faint }}>{axObj.hue > 0 ? "+" + axObj.hue : axObj.hue}</span>
+                              </div>
+                              {/* 雙推桿 */}
+                              <div style={{ display: "flex", gap: 4 }}>
+                                <VFader axis={a} kind="sat" val={axObj.sat} fillColor={col} />
+                                <VFader axis={a} kind="hue" val={axObj.hue} fillColor={"#3da0ff"} />
+                              </div>
+                              {/* S / H 標示 */}
+                              <div style={{ display: "flex", gap: 4, fontFamily: fMono, fontSize: 9 }}>
+                                <span style={{ width: 22, textAlign: "center", color: T.amber }}>S</span>
+                                <span style={{ width: 22, textAlign: "center", color: T.blue }}>H</span>
+                              </div>
+                              {/* 軸標籤 + 色點 */}
+                              <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 2, marginTop: 1 }}>
+                                <span style={{ width: 16, height: 4, borderRadius: 2, background: col, boxShadow: touched ? `0 0 5px ${col}` : "none" }} />
+                                <span style={{ fontFamily: fMono, fontSize: 11.5, fontWeight: 700, color: isSel ? "#fff" : touched ? T.amber : T.dim }}>{a}</span>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                      {/* 底部反光 */}
+                      <div style={{ height: 8, marginTop: 4, borderRadius: 4, background: "linear-gradient(180deg, rgba(255,255,255,0.05), transparent)" }} />
+                    </div>
+                  </div>
+                );
+              })()
+            ) : (
+              /* === 色卡矩陣 2x8 卡片視圖 === */
+              <div style={{ width: "100%", display: "flex", flexDirection: "column", gap: 12 }}>
+                <div style={{ fontSize: 14, color: T.dim, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <span>16 軸色彩等化器 — 在卡片內直接調整，或點擊選中當前軸：</span>
+                  <button onClick={() => upd("axes", DEF_AXES())} disabled={mOff}
+                    style={{ background: "none", border: "none", color: mOff ? T.faint : T.blue, cursor: mOff ? "default" : "pointer", fontSize: 14, fontFamily: fUI, padding: 0 }}>
+                    全部重設歸零
+                  </button>
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(8, 1fr)", gap: 10, width: "100%", boxSizing: "border-box" }}>
+                  {AXIS16.map((a) => {
+                    const axObj = st.axes[a];
+                    const touched = axObj.hue !== 0 || axObj.sat !== 0;
+                    const isSel = selAxis === a;
+                    const ang = angUI[a];
+                    const [r, g, b] = hsv2rgb(ang, 0.85, 0.95);
+                    return (
+                      <div key={a}
+                        onClick={() => { if (!mOff) setSelAxis(a); }}
+                        style={{
+                          background: T.panel2,
+                          border: `1.5px solid ${isSel ? T.blue : touched ? T.amber : T.line2}`,
+                          borderRadius: 8, overflow: "hidden", display: "flex", flexDirection: "column",
+                          cursor: mOff ? "default" : "pointer", transition: "all 0.15s", boxSizing: "border-box"
+                        }}>
+                        <div style={{ height: 6, background: `rgb(${r*255},${g*255},${b*255})` }} />
+                        <div style={{ padding: "6px 8px 4px", display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: `1px solid ${T.line}` }}>
+                          <span style={{ fontSize: 14, fontWeight: 700, color: isSel ? "#fff" : T.dim }}>{a}</span>
+                          {touched && (
+                            <button onClick={(e) => { e.stopPropagation(); if (mOff) return; updAxis(a, "hue", 0); updAxis(a, "sat", 0); }}
+                              style={{ background: "none", border: "none", cursor: "pointer", color: T.faint, fontSize: 13, padding: 0, lineHeight: 1 }} title="此軸重設">✕</button>
+                          )}
+                        </div>
+                        <div style={{ padding: "8px 8px 10px", display: "flex", flexDirection: "column", gap: 6 }}>
+                          <div>
+                            <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, marginBottom: 2 }}>
+                              <span style={{ color: T.faint }}>H</span>
+                              <span style={{ color: axObj.hue ? T.blue : T.faint, fontFamily: fMono }}>{axObj.hue > 0 ? "+" + axObj.hue : axObj.hue}</span>
+                            </div>
+                            <input type="range" min={-99} max={99} value={axObj.hue} disabled={mOff}
+                              onChange={(e) => updAxis(a, "hue", parseInt(e.target.value))}
+                              onClick={(e) => e.stopPropagation()} onMouseDown={startDrag} onTouchStart={startDrag} onMouseUp={endDrag} onTouchEnd={endDrag}
+                              className="tr-sl"
+                              style={{ "--p": ((axObj.hue + 99) / 198) * 100 + "%", height: 3, width: "100%", cursor: mOff ? "not-allowed" : "pointer",
+                                background: `linear-gradient(90deg, ${T.blue} ${((axObj.hue + 99) / 198) * 100}%, #33393f ${((axObj.hue + 99) / 198) * 100}%)` }} />
+                          </div>
+                          <div>
+                            <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, marginBottom: 2 }}>
+                              <span style={{ color: T.faint }}>S</span>
+                              <span style={{ color: axObj.sat ? T.amber : T.faint, fontFamily: fMono }}>{axObj.sat > 0 ? "+" + axObj.sat : axObj.sat}</span>
+                            </div>
+                            <input type="range" min={-99} max={99} value={axObj.sat} disabled={mOff}
+                              onChange={(e) => updAxis(a, "sat", parseInt(e.target.value))}
+                              onClick={(e) => e.stopPropagation()} onMouseDown={startDrag} onTouchStart={startDrag} onMouseUp={endDrag} onTouchEnd={endDrag}
+                              className="tr-sl"
+                              style={{ "--p": ((axObj.sat + 99) / 198) * 100 + "%", height: 3, width: "100%", cursor: mOff ? "not-allowed" : "pointer",
+                                background: `linear-gradient(90deg, ${T.amber} ${((axObj.sat + 99) / 198) * 100}%, #33393f ${((axObj.sat + 99) / 198) * 100}%)` }} />
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      );
+    }
+
+    if (block === "detail") {
+      return (
+        <div id="aver-control-params-detail">
+          <BlockHeader 
+            title="Detail" 
+            sub="輪廓銳利度 (訊號級高頻銳化)" 
+            right={<Toggle on={st.detailOn} onChange={(v) => upd("detailOn", v)} label={st.detailOn ? "ON" : "OFF"} />} 
+          />
+          <div style={{ opacity: st.detailOn ? 1 : 0.35, pointerEvents: st.detailOn ? "auto" : "none", maxWidth: 380 }}>
+            <Slider k="detail" label="Level" hint="" min={-7} max={7} val={st.detail} onChange={(v) => upd("detail", v)} onStartDrag={startDrag} onEndDrag={endDrag} />
+            <CrossHint>影像處理頁面另有主 Sharpness (0-3) 基本銳利度，兩者將會疊加作用。</CrossHint>
+          </div>
+        </div>
+      );
+    }
+    
+    if (block === "knee") {
+      return (
+        <div id="aver-control-params-knee">
+          <BlockHeader 
+            title="Knee" 
+            sub="高光壓縮 — 壓抑過度曝光的白色區域，保留高光細節" 
+            right={<Toggle on={st.kneeOn} onChange={(v) => upd("kneeOn", v)} label={st.kneeOn ? "ON" : "OFF"} />} 
+          />
+          <div style={{ opacity: st.kneeOn ? 1 : 0.35, pointerEvents: st.kneeOn ? "auto" : "none", maxWidth: 420 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14 }}>
+              <Toggle on={st.autoKnee} onChange={(v) => upd("autoKnee", v)} label="Auto Knee" />
+              {st.autoKnee && (
+                <div style={{ display: "flex", gap: 4 }}>
+                  {["Low", "Mid", "High"].map((s) => (
+                    <button 
+                      key={s} 
+                      onClick={() => upd("kneeSens", s)} 
+                      style={{ 
+                        padding: "3px 10px", fontSize: 14, borderRadius: 5, cursor: "pointer", 
+                        border: `1px solid ${st.kneeSens === s ? T.blue : T.line2}`, 
+                        background: st.kneeSens === s ? "rgba(30,155,240,0.12)" : "transparent", 
+                        color: st.kneeSens === s ? T.blue : T.dim, fontFamily: fUI 
+                      }}
+                    >
+                      {s}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+            <div style={{ opacity: st.autoKnee ? 0.35 : 1, pointerEvents: st.autoKnee ? "none" : "auto" }}>
+              <Slider k="kneePoint" label="Point" hint="壓縮起始點" min={75} max={105} val={st.kneePoint} onChange={(v) => upd("kneePoint", v)} neutral={95} onStartDrag={startDrag} onEndDrag={endDrag} />
+              <Slider k="kneeSlope" label="Slope" hint="壓縮斜率" min={-5} max={5} val={st.kneeSlope} onChange={(v) => upd("kneeSlope", v)} onStartDrag={startDrag} onEndDrag={endDrag} />
+            </div>
+            <Note>調整時建議切換至波形圖，觀察亮部 (90-100%) 的訊號壓縮變化。Auto Knee 開啟時將由相機晶片自動調節。</Note>
+          </div>
+        </div>
+      );
+    }
+    
+    if (block === "black") {
+      return (
+        <div id="aver-control-params-black">
+          <BlockHeader title="Black Level" sub="黑位準 — 設定圖像的黑電平與暗部對比" />
+          <div style={{ maxWidth: 380 }}>
+            <Slider k="black" label="Level" hint="" min={-50} max={50} val={st.black} onChange={(v) => upd("black", v)} onStartDrag={startDrag} onEndDrag={endDrag} />
+            <Note>負值將加深黑位並提高對比；正值則能提起暗部層次。調整時請注意黑位不應低於 0% 臨界線。</Note>
+          </div>
+        </div>
+      );
+    }
+  };
+
+  // ==========================================================================
+  // E. 佈局架構與 UI 樹 (Page Layout & Main DOM Trees)
+  // ==========================================================================
+  return (
+    <div id="aver-paint-look-root" style={{ background: T.page, width: "100%", height: "100vh", fontFamily: fUI, color: T.text, display: "flex", overflow: "hidden" }}>
+      {/* 注入控制滑桿樣式與色環旋轉動畫 */}
+      <style>{`
+        /* 全域自訂滾動條樣式，使其融入暗色主題 */
+        * {
+          scrollbar-width: thin;
+          scrollbar-color: ${T.line2} rgba(0, 0, 0, 0.1);
+        }
+        ::-webkit-scrollbar {
+          width: 6px;
+          height: 6px;
+        }
+        ::-webkit-scrollbar-track {
+          background: rgba(0, 0, 0, 0.1);
+          border-radius: 3px;
+        }
+        ::-webkit-scrollbar-thumb {
+          background: ${T.line2};
+          border-radius: 3px;
+          transition: background 0.15s;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+          background: ${T.blue};
+        }
+
+        .tr-sl { -webkit-appearance:none; appearance:none; flex:1; height:4px; border-radius:2px; background:linear-gradient(90deg, ${T.blue} var(--p), #33393f var(--p)); outline:none; cursor:pointer; }
+        .tr-sl::-webkit-slider-thumb { -webkit-appearance:none; width:14px; height:14px; border-radius:50%; background:#fff; cursor:pointer; box-shadow:0 1px 3px rgba(0,0,0,.6); }
+        .tr-sl::-moz-range-thumb { width:13px; height:13px; border-radius:50%; background:#fff; border:none; cursor:pointer; }
+        @keyframes mmspin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+        .tr-vfader { -webkit-appearance: none; appearance: none; writing-mode: vertical-lr; direction: rtl; width: 100%; height: 100%; margin: 0; background: transparent; cursor: ns-resize; }
+        .tr-vfader::-webkit-slider-thumb { -webkit-appearance: none; width: 22px; height: 8px; border-radius: 3px; background: #fff; box-shadow: 0 1px 4px rgba(0,0,0,.7); cursor: ns-resize; }
+        .tr-vfader::-moz-range-thumb { width: 22px; height: 8px; border-radius: 3px; background: #fff; border: none; cursor: ns-resize; }
+        .tr-vfader:disabled { cursor: not-allowed; }
+
+        /* Modal 彈出與縮放動效 */
+        @keyframes fadeIn {
+          from { opacity: 0; }
+          to { opacity: 1; }
+        }
+        @keyframes scaleIn {
+          from { transform: scale(0.95); opacity: 0; }
+          to { transform: scale(1); opacity: 1; }
+        }
+        .aver-focus-back-btn:hover {
+          background: ${T.blue} !important;
+          box-shadow: 0 0 10px rgba(30, 155, 240, 0.5);
+        }
+      `}</style>
+
+      {/* 側邊導覽欄 (AVer WebUI Sidebar Template) */}
+      <div id="aver-sidebar-container" style={{ width: 220, background: T.side, flexShrink: 0, paddingTop: 20, display: "flex", flexDirection: "column", height: "100vh", boxSizing: "border-box" }}>
+        <div style={{ padding: "4px 24px 20px", fontWeight: 700, fontSize: 22, fontStyle: "italic", letterSpacing: 0.5, color: "#fff" }}>AVer</div>
+        {[
+          ["Live View", "live", false], 
+          ["Camera Settings", "camera", false], 
+          ["Paint / Look", "paint", true], 
+          ["Video & Audio", "video", true], 
+          ["Network", "network", false], 
+          ["Tracking Settings", "tracking", false], 
+          ["NDI", "ndi", false], 
+          ["System", "system", false], 
+          ["Audio Integrated", "audio_int", false]
+        ].map(([lb, id, implement]) => {
+          const active = activeMenu === id;
+          return (
+            <div 
+              key={lb} 
+              onClick={() => { if (implement) setActiveMenu(id); }}
+              style={{ 
+                padding: "14px 24px", fontSize: 14, cursor: implement ? "pointer" : "default", 
+                background: active ? T.sideActive : "transparent", 
+                color: active ? "#fff" : T.dim, 
+                fontWeight: active ? 600 : 400, 
+                borderLeft: active ? "4px solid #fff" : "4px solid transparent", 
+                transition: "all .15s" 
+              }}
+            >
+              {lb}
+            </div>
+          );
+        })}
+        <div style={{ margin: "auto 16px 20px", padding: "12px 14px", borderRadius: 8, background: "rgba(30,155,240,0.06)", border: `1px solid ${T.line}`, fontSize: 14, color: T.faint, lineHeight: 1.6 }}>
+          原型示意: 點擊選單切換 Video & Audio 與 Paint / Look。
+        </div>
+      </div>
+
+      {/* 主工作區 (Main Stage Panel) */}
+      <div id="aver-main-stage" style={{ flex: 1, padding: "16px 24px", minWidth: 0, background: T.page, overflow: "hidden", height: "100vh", display: "flex", flexDirection: "column", boxSizing: "border-box" }}>
+        {activeMenu === "paint" ? (
+          <div id="aver-content-wrapper" style={{ display: "flex", flexDirection: "column", gap: 10, width: "100%", maxWidth: "1350px", margin: "0 auto", height: "100%", minHeight: 0 }}>
+          
+          {/* 1. LIVE 預覽與場景檔主控制台 */}
+          <div id="aver-preview-preset-panel" style={{ background: T.panel, border: `1px solid ${T.line}`, borderRadius: 10, padding: "14px 20px", display: "flex", flexDirection: "column", gap: 12, width: "100%", boxSizing: "border-box", flex: "1.25 1 0", minHeight: 0 }}>
+            
+            {/* 標題欄 */}
+            <div id="aver-title-row" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 0, flexWrap: "wrap", gap: 8, flexShrink: 0 }}>
+              <div style={{ fontSize: 20, fontWeight: 600, color: "#fff" }}>Paint / Look</div>
+            </div>
+
+            <div id="aver-preview-preset-flex" style={{ display: "flex", gap: 10, width: "100%", flex: 1, minHeight: 0 }}>
+              
+              {/* 左半部：影像預覽畫布與多模示波器 */}
+              <div id="aver-preview-monitor-block" style={{ flex: 1, minWidth: 320, display: "flex", flexDirection: "column", minHeight: 0 }}>
+                <div id="aver-canvas-preview-container" style={{ position: "relative", borderRadius: 8, overflow: "hidden", border: `1px solid ${T.line}`, background: "#000", flex: 1, minHeight: 0, width: "100%", boxSizing: "border-box", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                  
+                  {/* 主要畫面 Canvas — 已修正為 React 物理屬性防抖動架構 */}
+                  <canvas ref={preRef} width={SW} height={SH} style={{ width: "100%", height: "100%", display: "block", objectFit: "contain" }} />
+                  <span style={{ position: "absolute", left: 12, top: 10, fontFamily: fMono, fontSize: 14, color: "rgba(255,255,255,.9)", textShadow: "0 1px 2px #000", fontWeight: 600, zIndex: 20 }}>
+                    {bypass ? "● BYPASS" : "● LIVE(模擬畫面)"}
+                  </span>
+                  
+                  {/* 按住看原始按鈕 */}
+                  <button 
+                    onMouseDown={() => setBypass(true)} 
+                    onMouseUp={() => setBypass(false)} 
+                    onMouseLeave={() => setBypass(false)} 
+                    onTouchStart={() => setBypass(true)} 
+                    onTouchEnd={() => setBypass(false)}
+                    style={{ 
+                      position: "absolute", right: 12, top: 10, padding: "4px 10px", fontSize: 14, cursor: "pointer", 
+                      borderRadius: 5, border: bypass ? `1px solid ${T.blue}` : "1px solid rgba(255,255,255,0.25)", 
+                      background: bypass ? "rgba(30,155,240,0.85)" : "rgba(22,24,27,0.65)", 
+                      color: bypass ? "#fff" : "rgba(255,255,255,0.9)", fontFamily: fUI, 
+                      backdropFilter: "blur(4px)", transition: "all .15s", zIndex: 20
+                    }}
+                  >
+                    {bypass ? "原始畫面" : "按住看原始"}
+                  </button>
+
+                  {/* 示波器類型切換列 */}
+                  <div id="aver-scope-control-bar" style={{
+                    position: "absolute", left: 12, bottom: 12, height: 38, boxSizing: "border-box",
+                    background: "rgba(22, 24, 27, 0.75)", border: `1px solid ${T.line}`, borderRadius: 8,
+                    padding: "0 12px", display: "flex", alignItems: "center", gap: 12, backdropFilter: "blur(4px)", zIndex: 20
+                  }}>
+                    <span style={{ fontSize: 14, color: "rgba(255,255,255,0.9)", fontWeight: 600 }}>監看</span>
+                    <Toggle on={showScope} onChange={setShowScope} />
+                    {showScope && (
+                      <div style={{ display: "flex", background: "#101216", border: `1px solid ${T.line}`, borderRadius: 6, padding: 3, gap: 4, alignItems: "center" }}>
+                        {[["vector", "向量"], ["wave", "波形"], ["hist", "直方圖"]].map(([id, lb]) => (
+                          <button 
+                            key={id} 
+                            onClick={() => setScope(id)} 
+                            style={{ 
+                              padding: "4px 10px", fontSize: 14, cursor: "pointer", borderRadius: 4, 
+                              border: "none", background: scope === id ? T.blue : "transparent", 
+                              color: scope === id ? "#fff" : T.dim, fontFamily: fUI 
+                            }}
+                          >
+                            {lb}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* 示波器 Canvas 渲染層 */}
+                  {showScope && (
+                    <div id="aver-scope-canvas-container" style={{
+                      position: "absolute", right: 12, bottom: 12, zIndex: 20, borderRadius: 6,
+                      overflow: "hidden", border: `1px solid ${T.line}`, boxShadow: "0 4px 12px rgba(0,0,0,0.5)",
+                      background: "rgba(8,12,10,0.95)", display: "flex", flexDirection: "column", alignItems: "center", padding: "4px"
+                    }}>
+                      <canvas ref={scRef} width={scope === "vector" ? 140 : 190} height={140} style={{ display: "block", borderRadius: 4 }} />
+                      <div style={{ fontSize: 14, color: T.dim, marginTop: 3, fontFamily: fUI, textAlign: "center" }}>
+                        {scope === "vector" ? "向量示波器 (膚色線)" : scope === "wave" ? "波形圖 (0-100%)" : "RGB 直方圖 (暗→亮)"}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* 右半部:場景檔取用面板 — [設計決策] 純取用層 (載入/編輯/刪除)。
+                  「儲存/另存」動作不在此,而在調整區尾端,符合「調完各區塊→在終點存檔」的工作流。
+                  Standard 為原廠卡(不可刪/不佔額度);使用者場景含名稱/備註/縮圖,上限 16。 */}
+              <div id="aver-preset-save-block" style={{ width: 320, flexShrink: 0, display: "flex", flexDirection: "column", minHeight: 0, alignSelf: "stretch", background: "rgba(0,0,0,0.18)", border: `1px solid ${T.line}`, borderRadius: 8, padding: "14px 10px", boxSizing: "border-box" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10, flexShrink: 0 }}>
+                  <span style={{ fontSize: 15, fontWeight: 600, color: T.text }}>場景檔</span>
+                  <span style={{ fontSize: 14, color: scenes.length >= 16 ? T.amber : T.faint, fontFamily: fMono }}>{scenes.length}/16</span>
+                </div>
+
+                {/* 縮圖網格 — 點縮圖即載入 (已調整 padding 預留卡片發光空間) */}
+                <div id="aver-preset-grid" style={{ 
+                  flex: 1, 
+                  minHeight: 0, 
+                  overflowY: "auto", 
+                  display: "grid", 
+                  gridTemplateColumns: "repeat(2, 1fr)", 
+                  gap: "8px", 
+                  padding: "10px 0px 10px 0px", 
+                  alignItems: "start", 
+                  alignContent: "start" 
+                }}>
+                  <SceneTile thumb={stdThumb} name="Standard" factory active={activeScene === "std"} dirty={isDirty} onLoad={loadStandard} />
+                  {scenes.map((s) => (
+                    <SceneTile key={s.id} thumb={s.thumb} name={s.name} remark={s.remark} active={activeScene === s.id} dirty={isDirty}
+                      onLoad={() => loadScene(s)}
+                      onEdit={() => { setEditingScene(s.id); setEdName(s.name); setEdRemark(s.remark || ""); setSaveOpen(false); }}
+                      onDelete={() => setDeletingScene(s)} />
+                  ))}
+                  {scenes.length === 0 && (
+                    <div style={{ gridColumn: "1 / -1", border: `1.5px dashed ${T.line2}`, borderRadius: 8, padding: "14px 10px", textAlign: "center", color: T.faint, fontSize: 14, lineHeight: 1.6 }}>
+                      尚無自訂場景。<br />在下方控制台調整參數後，於控制台頂部另存。
+                    </div>
+                  )}
+                </div>
+                </div>
+            </div>
+          </div>
+
+          {/* 2. 底部功能分頁選單與數值調整滑桿 */}
+          {/* 2. 底部功能分頁選單與數值調整滑桿 */}
+          <div id="aver-adjustments-panel" style={{ 
+            display: "flex", 
+            flexDirection: "column",
+            gap: 0, 
+            width: "100%", 
+            flex: "0.9 1 0", 
+            minHeight: 0,
+            background: T.panel, 
+            border: `1px solid ${T.line}`, 
+            borderRadius: 10, 
+            boxSizing: "border-box" 
+          }}>
+            
+            {/* 頂部層級控制列 - 儲存場景行為與狀態 */}
+            <div id="aver-adjustments-top-bar" style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              padding: "10px 20px",
+              borderBottom: `1px solid ${T.line}`,
+              background: "rgba(0, 0, 0, 0.15)",
+              flexShrink: 0,
+              gap: 16,
+              flexWrap: "wrap"
+            }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <span style={{ fontSize: 14, fontWeight: 600, color: T.dim }}>當前場景狀態：</span>
+                <span style={{ 
+                  fontSize: 14, 
+                  fontWeight: 700, 
+                  color: activeScene === "std" ? T.blue : T.text,
+                  background: activeScene === "std" ? "rgba(30,155,240,0.1)" : "rgba(255,255,255,0.06)",
+                  padding: "4px 10px",
+                  borderRadius: 6,
+                  border: `1px solid ${activeScene === "std" ? "rgba(30,155,240,0.2)" : T.line}`
+                }}>
+                  {activeScene === "std" ? "Standard (原廠預設)" : (scenes.find((x) => x.id === activeScene)?.name || "自訂場景")}
+                </span>
+                {isDirty && (
+                  <span style={{ 
+                    fontSize: 14, 
+                    fontWeight: 600, 
+                    color: T.amber, 
+                    background: "rgba(245,166,35,0.1)", 
+                    padding: "3px 8px", 
+                    borderRadius: 4, 
+                    border: `1px solid rgba(245,166,35,0.2)`
+                  }}>
+                    ● 已修改未儲存
+                  </span>
+                )}
+              </div>
+
+              <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                {isDirty && activeScene !== "std" && activeScene != null && (
+                  <button 
+                    onClick={() => { const s = scenes.find((x) => x.id === activeScene); if (s) updateScene(s); }} 
+                    style={{ 
+                      padding: "6px 14px", 
+                      fontSize: 14, 
+                      fontWeight: 600,
+                      cursor: "pointer", 
+                      borderRadius: 6, 
+                      border: `1px solid ${T.blueDark}`, 
+                      background: "rgba(30,155,240,0.12)", 
+                      color: T.blue, 
+                      fontFamily: fUI,
+                      transition: "all .15s"
+                    }}
+                  >
+                    覆寫當前場景
+                  </button>
+                )}
+                <button 
+                  onClick={() => { setSaveOpen((v) => !v); setEditingScene(null); setScName(""); setScRemark(""); }} 
+                  disabled={!isDirty || scenes.length >= 16} 
+                  style={{ 
+                    padding: "6px 14px", 
+                    fontSize: 14, 
+                    fontWeight: 600,
+                    cursor: (!isDirty || scenes.length >= 16) ? "not-allowed" : "pointer", 
+                    borderRadius: 6, 
+                    border: "none", 
+                    background: (!isDirty || scenes.length >= 16) ? "rgba(255, 255, 255, 0.08)" : T.blue, 
+                    color: (!isDirty || scenes.length >= 16) ? T.faint : "#fff", 
+                    fontFamily: fUI,
+                    opacity: (!isDirty || scenes.length >= 16) ? 0.45 : 1,
+                    transition: "all .15s"
+                  }}
+                >
+                  另存為新場景
+                </button>
+              </div>
+            </div>
+
+
+            {/* 工作區容器 (包含左側 nav 與右側 controls) */}
+            <div id="aver-adjustments-workspace" style={{ display: "flex", gap: 0, flex: 1, minHeight: 0, width: "100%" }}>
+              
+              {/* 左側選單切換 (Block Selection Navigation) */}
+              <div id="aver-adjustments-nav" style={{ 
+                width: 170, 
+                flexShrink: 0, 
+                padding: "16px 12px", 
+                boxSizing: "border-box", 
+                display: "flex", 
+                flexDirection: "column", 
+                alignSelf: "stretch" 
+              }}>
+                <div style={{ flex: 1, overflowY: "auto", minHeight: 0, display: "flex", flexDirection: "column", gap: 8, paddingRight: 2 }}>
+                  {BLOCKS.map(([id, lb]) => (
+                    <button 
+                      key={id} 
+                      onClick={() => setBlock(id)} 
+                      style={{
+                        display: "block", width: "100%", textAlign: "left", padding: "10px 12px", cursor: "pointer", borderRadius: 7,
+                        border: `1.5px solid ${block === id ? T.blue : T.line2}`, 
+                        background: block === id ? "rgba(30,155,240,0.12)" : T.panel2,
+                        transition: "all .15s", boxSizing: "border-box",
+                      }}
+                    >
+                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                        <span style={{ fontSize: 14.5, color: block === id ? T.blue : T.text, fontWeight: block === id ? 600 : 500 }}>{lb}</span>
+                        <span style={{ width: 7, height: 7, borderRadius: 4, background: blockActive(id) ? T.green : T.line2 }} />
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+              
+              {/* 右側具體調整項 (Parameters Control Stage) */}
+              <div id="aver-adjustments-controls" style={{ 
+                flex: 1, 
+                borderLeft: `1px solid ${T.line}`, 
+                padding: "16px 20px", 
+                minWidth: 0, 
+                display: "flex", 
+                flexDirection: "column", 
+                alignSelf: "stretch" 
+              }}>
+                <div style={{ flex: 1, overflowY: "auto", minHeight: 0, paddingRight: 4 }}>
+                  {renderBlock()}
+                </div>
+              </div>
+
+            </div>
+
+          </div>
+        </div>
+        ) : (
+          <div id="aver-video-audio-wrapper" style={{ display: "flex", flexDirection: "column", gap: 12, width: "100%", maxWidth: "1350px", margin: "0 auto", height: "100%", minHeight: 0, overflow: "hidden" }}>
+            
+            {/* Video & Audio 設置區滾動容器 */}
+            <div style={{ flex: 1, overflowY: "auto", display: "flex", flexDirection: "column", gap: 14, paddingRight: 4, minHeight: 0 }}>
+              
+              {/* 頂部的三個獨立 FormField 欄位，寬度與下方 Stream Video Output 相同 */}
+              <div style={{ display: "flex", flexDirection: "column", gap: 10, width: "100%" }}>
+                {/* Power Frequency */}
+                <FormField label="Power Frequency">
+                  <div style={{ display: "flex", gap: 24, padding: "4px 0" }}>
+                    {["50Hz", "59.94Hz", "60Hz"].map((f) => (
+                      <VerticalRadio key={f} label={f} checked={videoSettings.powerFreq === f} onChange={() => updVideo("powerFreq", f)} />
+                    ))}
+                  </div>
+                </FormField>
+
+                {/* Video Output Resolution */}
+                <FormField label="Video Output Resolution">
+                  <Select 
+                    val={videoSettings.videoOutRes} 
+                    options={["1080μP/59", "1080p/60", "1080p/50", "1080p/30", "720p/60", "720p/59.94"]} 
+                    onChange={(v) => updVideo("videoOutRes", v)}
+                    style={{ width: "100%", background: "#202328", border: `1.5px solid ${T.line2}`, borderRadius: 4, padding: "6px 12px" }}
+                  />
+                </FormField>
+
+                {/* Theme Mode */}
+                <FormField label="Theme Mode">
+                  <Select 
+                    val={videoSettings.themeMode} 
+                    options={["Standard", "Dark", "Light"]} 
+                    onChange={(v) => updVideo("themeMode", v)} 
+                    style={{ width: "100%", background: "#202328", border: `1.5px solid ${T.line2}`, borderRadius: 4, padding: "6px 12px" }}
+                  />
+                </FormField>
+              </div>
+
+              {/* Stream Video Output 大卡片 */}
+              <ConfigCard title="Stream Video Output">
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12 }}>
+                  {/* Row 1, Col 1: Stream Video Output */}
+                  <FormField label="Stream Video Output">
+                    <Select 
+                      val={videoSettings.streamRes} 
+                      options={["1920x1080", "1280x720", "640x360"]} 
+                      onChange={(v) => updVideo("streamRes", v)} 
+                      style={{ width: "100%", background: "#202328", border: `1.5px solid ${T.line2}`, borderRadius: 4, padding: "6px 12px" }}
+                    />
+                  </FormField>
+
+                  {/* Row 1, Col 2: Bitrate */}
+                  <FormField label="Bitrate">
+                    <Select 
+                      val={videoSettings.streamBitrate} 
+                      options={["Auto", "2M", "4M", "8M", "16M"]} 
+                      onChange={(v) => updVideo("streamBitrate", v)} 
+                      style={{ width: "100%", background: "#202328", border: `1.5px solid ${T.line2}`, borderRadius: 4, padding: "6px 12px" }}
+                    />
+                  </FormField>
+
+                  {/* Row 1, Col 3: Encoding Type */}
+                  <FormField label="Encoding Type">
+                    <div style={{ display: "flex", gap: 24, padding: "4px 0" }}>
+                      <VerticalRadio label="H.264" checked={videoSettings.streamEncode === "H.264"} onChange={() => updVideo("streamEncode", "H.264")} />
+                      <VerticalRadio label="H.265" checked={videoSettings.streamEncode === "H.265"} onChange={() => updVideo("streamEncode", "H.265")} />
+                    </div>
+                  </FormField>
+
+                  {/* Row 2, Col 1: Framerate */}
+                  <FormField label="Framerate">
+                    <Select 
+                      val={videoSettings.streamFps} 
+                      options={["60", "50", "30", "25"]} 
+                      onChange={(v) => updVideo("streamFps", v)} 
+                      style={{ width: "100%", background: "#202328", border: `1.5px solid ${T.line2}`, borderRadius: 4, padding: "6px 12px" }}
+                    />
+                  </FormField>
+
+                  {/* Row 2, Col 2: I-VOP Interval (S) */}
+                  <FormField label="I-VOP Interval (S)" rightLabel={`${videoSettings.streamI_Vop}s`}>
+                    <BodySlider val={videoSettings.streamI_Vop} min={1} max={10} onChange={(v) => updVideo("streamI_Vop", v)} />
+                  </FormField>
+
+                  {/* Row 2, Col 3: GOP Value */}
+                  <FormField label="GOP Value">
+                    <input 
+                      type="text" 
+                      disabled 
+                      value={videoSettings.streamGop} 
+                      style={{
+                        background: "transparent",
+                        border: "none",
+                        color: T.faint,
+                        fontSize: 14,
+                        padding: "4px 0",
+                        width: "100%",
+                        boxSizing: "border-box",
+                        cursor: "not-allowed",
+                        outline: "none"
+                      }} 
+                    />
+                  </FormField>
+
+                  {/* Row 3, Col 1: Compatibility Encoding Mode */}
+                  <FormField label="Compatibility Encoding Mode">
+                    <div style={{ display: "flex", gap: 24, padding: "4px 0" }}>
+                      <VerticalRadio label="Off" checked={videoSettings.streamCompat === "Off"} onChange={() => updVideo("streamCompat", "Off")} />
+                      <VerticalRadio label="On" checked={videoSettings.streamCompat === "On"} onChange={() => updVideo("streamCompat", "On")} />
+                    </div>
+                  </FormField>
+
+                  {/* Row 3, Col 2: Rate Control */}
+                  <FormField label="Rate Control">
+                    <div style={{ display: "flex", gap: 24, padding: "4px 0" }}>
+                      <VerticalRadio label="VBR" checked={videoSettings.streamRateCtrl === "VBR"} onChange={() => updVideo("streamRateCtrl", "VBR")} />
+                      <VerticalRadio label="CBR" checked={videoSettings.streamRateCtrl === "CBR"} onChange={() => updVideo("streamRateCtrl", "CBR")} />
+                    </div>
+                  </FormField>
+
+                  {/* Row 3, Col 3: Empty */}
+                  <div style={{ minHeight: 84 }} />
+                </div>
+              </ConfigCard>
+
+              {/* Audio 大卡片 */}
+              <ConfigCard title="Audio">
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12 }}>
+                  {/* Row 1, Col 1: Audio Input Type */}
+                  <FormField label="Audio Input Type">
+                    <div style={{ display: "flex", gap: 24, padding: "4px 0" }}>
+                      <VerticalRadio label="Line In" checked={videoSettings.audioInputType === "Line In"} onChange={() => updVideo("audioInputType", "Line In")} />
+                      <VerticalRadio label="MIC In" checked={videoSettings.audioInputType === "MIC In"} onChange={() => updVideo("audioInputType", "MIC In")} />
+                    </div>
+                  </FormField>
+
+                  {/* Row 1, Col 2: Audio Volume */}
+                  <FormField label="Audio Volume" rightLabel={videoSettings.audioVolume}>
+                    <BodySlider val={videoSettings.audioVolume} min={0} max={10} onChange={(v) => updVideo("audioVolume", v)} />
+                  </FormField>
+
+                  {/* Row 1, Col 3: USB Audio Enable */}
+                  <FormField label="USB Audio Enable">
+                    <Select 
+                      val={videoSettings.usbAudioEnable} 
+                      options={["Enable", "Disable"]} 
+                      onChange={(v) => updVideo("usbAudioEnable", v)} 
+                      style={{ width: "100%", background: "#202328", border: `1.5px solid ${T.line2}`, borderRadius: 4, padding: "6px 12px" }}
+                    />
+                  </FormField>
+
+                  {/* Row 2, Col 1: Encoding Type */}
+                  <FormField label="Encoding Type">
+                    <div style={{ display: "flex", gap: 24, padding: "4px 0" }}>
+                      <VerticalRadio label="AAC" checked={videoSettings.audioEncode === "AAC"} onChange={() => {}} />
+                    </div>
+                  </FormField>
+
+                  {/* Row 2, Col 2: Sampling Rate */}
+                  <FormField label="Sampling Rate">
+                    <Select 
+                      val={videoSettings.audioSampleRate} 
+                      options={["48K", "44.1K"]} 
+                      disabled 
+                      onChange={() => {}} 
+                      style={{ width: "100%", background: "#202328", border: `1.5px solid ${T.line2}`, borderRadius: 4, padding: "6px 12px" }}
+                    />
+                  </FormField>
+
+                  {/* Row 2, Col 3: Empty */}
+                  <div style={{ minHeight: 84 }} />
+                </div>
+              </ConfigCard>
+            </div>
+          </div>
+        )}
+
+        {/* 輕量快閃提示 */}
+        {toast && (
+          <div style={{ position: "fixed", left: "50%", bottom: 28, transform: "translateX(-50%)", background: "#222a31", border: `1px solid ${T.line2}`, color: T.text, fontSize: 14, padding: "8px 16px", borderRadius: 8, fontFamily: fUI, zIndex: 100 }}>
+            {toast}
+          </div>
+        )}
+
+        {/* 另存新場景 Modal 彈出視窗 */}
+        {saveOpen && (
+          <div 
+            style={{
+              position: "fixed",
+              inset: 0,
+              background: "rgba(0, 0, 0, 0.65)",
+              backdropFilter: "blur(4px)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              zIndex: 1000,
+              animation: "fadeIn 0.2s ease-out"
+            }} 
+            onClick={() => setSaveOpen(false)}
+          >
+            <div 
+              style={{
+                background: T.panel,
+                border: `1px solid ${T.line}`,
+                borderRadius: 12,
+                width: 420,
+                padding: 24,
+                boxShadow: "0 12px 36px rgba(0, 0, 0, 0.55)",
+                animation: "scaleIn 0.2s cubic-bezier(0.34, 1.56, 0.64, 1)"
+              }} 
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+                <span style={{ fontSize: 18, fontWeight: 600, color: T.text }}>另存新場景</span>
+                <button 
+                  onClick={() => setSaveOpen(false)} 
+                  style={{ background: "none", border: "none", cursor: "pointer", color: T.dim, fontSize: 16, padding: 0 }}
+                >
+                  ✕
+                </button>
+              </div>
+
+              <div style={{ display: "flex", flexDirection: "column", gap: 12, marginBottom: 20 }}>
+                <div>
+                  <div style={{ fontSize: 14, color: T.dim, marginBottom: 6 }}>場景名稱</div>
+                  <input 
+                    autoFocus 
+                    value={scName} 
+                    onChange={(e) => setScName(e.target.value)} 
+                    placeholder="例如: 主舞台 / 直播間" 
+                    maxLength={24}
+                    style={{ 
+                      width: "100%",
+                      boxSizing: "border-box",
+                      background: "#101216", 
+                      border: `1px solid ${T.line2}`, 
+                      borderRadius: 6, 
+                      color: T.text, 
+                      fontSize: 14, 
+                      padding: "8px 12px", 
+                      outline: "none", 
+                      fontFamily: fUI 
+                    }} 
+                  />
+                </div>
+                
+                <div>
+                  <div style={{ fontSize: 14, color: T.dim, marginBottom: 6 }}>備註資訊</div>
+                  <input 
+                    value={scRemark} 
+                    onChange={(e) => setScRemark(e.target.value)} 
+                    placeholder="描述此場景的用途 (選填)" 
+                    maxLength={48}
+                    style={{ 
+                      width: "100%",
+                      boxSizing: "border-box",
+                      background: "#101216", 
+                      border: `1px solid ${T.line2}`, 
+                      borderRadius: 6, 
+                      color: T.text, 
+                      fontSize: 14, 
+                      padding: "8px 12px", 
+                      outline: "none", 
+                      fontFamily: fUI 
+                    }} 
+                  />
+                </div>
+
+                <div style={{ display: "flex", alignItems: "center", gap: 6, background: "rgba(30,155,240,0.05)", padding: "8px 12px", borderRadius: 6, border: `1px solid rgba(30,155,240,0.15)` }}>
+                  <span style={{ color: T.blue, fontSize: 14 }}>ℹ</span>
+                  <span style={{ fontSize: 14, color: T.dim }}>儲存時會自動擷取當前 Live View 畫面做為預覽縮圖。</span>
+                </div>
+              </div>
+
+              <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
+                <button 
+                  onClick={() => setSaveOpen(false)} 
+                  style={{ 
+                    padding: "8px 16px", 
+                    fontSize: 14, 
+                    cursor: "pointer", 
+                    borderRadius: 6, 
+                    border: `1px solid ${T.line2}`, 
+                    background: "transparent", 
+                    color: T.dim, 
+                    fontFamily: fUI 
+                  }}
+                >
+                  取消
+                </button>
+                <button 
+                  onClick={saveNewScene} 
+                  style={{ 
+                    padding: "8px 20px", 
+                    fontSize: 14, 
+                    fontWeight: 600, 
+                    cursor: "pointer", 
+                    borderRadius: 6, 
+                    border: "none", 
+                    background: T.blue, 
+                    color: "#fff", 
+                    fontFamily: fUI 
+                  }}
+                >
+                  確認儲存
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* 編輯場景資訊 Modal 彈出視窗 */}
+        {editingScene != null && (() => {
+          const es = scenes.find((x) => x.id === editingScene);
+          if (!es) return null;
+          return (
+            <div 
+              style={{
+                position: "fixed",
+                inset: 0,
+                background: "rgba(0, 0, 0, 0.65)",
+                backdropFilter: "blur(4px)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                zIndex: 1000,
+                animation: "fadeIn 0.2s ease-out"
+              }} 
+              onClick={() => setEditingScene(null)}
+            >
+              <div 
+                style={{
+                  background: T.panel,
+                  border: `1px solid ${T.line}`,
+                  borderRadius: 12,
+                  width: 420,
+                  padding: 24,
+                  boxShadow: "0 12px 36px rgba(0, 0, 0, 0.55)",
+                  animation: "scaleIn 0.2s cubic-bezier(0.34, 1.56, 0.64, 1)"
+                }} 
+                onClick={(e) => e.stopPropagation()}
+              >
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+                  <span style={{ fontSize: 18, fontWeight: 600, color: T.text }}>編輯場景資訊</span>
+                  <button 
+                    onClick={() => setEditingScene(null)} 
+                    style={{ background: "none", border: "none", cursor: "pointer", color: T.dim, fontSize: 16, padding: 0 }}
+                  >
+                    ✕
+                  </button>
+                </div>
+
+                <div style={{ display: "flex", flexDirection: "column", gap: 12, marginBottom: 20 }}>
+                  <div>
+                    <div style={{ fontSize: 14, color: T.dim, marginBottom: 6 }}>場景名稱</div>
+                    <input 
+                      autoFocus 
+                      value={edName} 
+                      onChange={(e) => setEdName(e.target.value)} 
+                      placeholder="場景名稱" 
+                      maxLength={24}
+                      style={{ 
+                        width: "100%",
+                        boxSizing: "border-box",
+                        background: "#101216", 
+                        border: `1px solid ${T.line2}`, 
+                        borderRadius: 6, 
+                        color: T.text, 
+                        fontSize: 14, 
+                        padding: "8px 12px", 
+                        outline: "none", 
+                        fontFamily: fUI 
+                      }} 
+                    />
+                  </div>
+                  
+                  <div>
+                    <div style={{ fontSize: 14, color: T.dim, marginBottom: 6 }}>備註資訊</div>
+                    <input 
+                      value={edRemark} 
+                      onChange={(e) => setEdRemark(e.target.value)} 
+                      placeholder="場景描述" 
+                      maxLength={48}
+                      style={{ 
+                        width: "100%",
+                        boxSizing: "border-box",
+                        background: "#101216", 
+                        border: `1px solid ${T.line2}`, 
+                        borderRadius: 6, 
+                        color: T.text, 
+                        fontSize: 14, 
+                        padding: "8px 12px", 
+                        outline: "none", 
+                        fontFamily: fUI 
+                      }} 
+                    />
+                  </div>
+
+                  <div>
+                    <div style={{ fontSize: 14, color: T.dim, marginBottom: 6 }}>參數數值摘要</div>
+                    <div style={{ fontFamily: fMono, fontSize: 14, color: T.dim, lineHeight: 1.7, padding: "10px 12px", background: "#101216", borderRadius: 8, border: `1px solid ${T.line}` }}>
+                      {summarize(es.data)}
+                      <div style={{ color: T.faint, marginTop: 6, borderTop: `1px solid ${T.line2}`, paddingTop: 6 }}>
+                        儲存於 {es.savedAt} · 出處: 使用者自訂
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
+                  <button 
+                    onClick={() => setEditingScene(null)} 
+                    style={{ 
+                      padding: "8px 16px", 
+                      fontSize: 14, 
+                      cursor: "pointer", 
+                      borderRadius: 6, 
+                      border: `1px solid ${T.line2}`, 
+                      background: "transparent", 
+                      color: T.dim, 
+                      fontFamily: fUI 
+                    }}
+                  >
+                    取消
+                  </button>
+                  <button 
+                    onClick={saveSceneMeta} 
+                    style={{ 
+                      padding: "8px 20px", 
+                      fontSize: 14, 
+                      fontWeight: 600, 
+                      cursor: "pointer", 
+                      borderRadius: 6, 
+                      border: "none", 
+                      background: T.blue, 
+                      color: "#fff", 
+                      fontFamily: fUI 
+                    }}
+                  >
+                    儲存變更
+                  </button>
+                </div>
+              </div>
+            </div>
+          );
+        })()}
+
+        {/* 確認刪除場景 Modal 彈出視窗 */}
+        {deletingScene != null && (
+          <div 
+            style={{
+              position: "fixed",
+              inset: 0,
+              background: "rgba(0, 0, 0, 0.65)",
+              backdropFilter: "blur(4px)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              zIndex: 1000,
+              animation: "fadeIn 0.2s ease-out"
+            }} 
+            onClick={() => setDeletingScene(null)}
+          >
+            <div 
+              style={{
+                background: T.panel,
+                border: `1px solid ${T.line}`,
+                borderRadius: 12,
+                width: 400,
+                padding: 24,
+                boxShadow: "0 12px 36px rgba(0, 0, 0, 0.55)",
+                animation: "scaleIn 0.2s cubic-bezier(0.34, 1.56, 0.64, 1)"
+              }} 
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+                <span style={{ fontSize: 18, fontWeight: 600, color: T.text }}>確認刪除場景</span>
+                <button 
+                  onClick={() => setDeletingScene(null)} 
+                  style={{ background: "none", border: "none", cursor: "pointer", color: T.dim, fontSize: 16, padding: 0 }}
+                >
+                  ✕
+                </button>
+              </div>
+
+              <div style={{ fontSize: 14, color: T.dim, marginBottom: 24, lineHeight: 1.6 }}>
+                確定要刪除自訂場景「<span style={{ color: "#fff", fontWeight: 600 }}>{deletingScene.name}</span>」嗎？<br />
+                此操作將會永久移除該場景存檔，且無法復原。
+              </div>
+
+              <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
+                <button 
+                  onClick={() => setDeletingScene(null)} 
+                  style={{ 
+                    padding: "8px 16px", 
+                    fontSize: 14, 
+                    cursor: "pointer", 
+                    borderRadius: 6, 
+                    border: `1px solid ${T.line2}`, 
+                    background: "transparent", 
+                    color: T.dim, 
+                    fontFamily: fUI 
+                  }}
+                >
+                  取消
+                </button>
+                <button 
+                  onClick={() => { deleteScene(deletingScene); setDeletingScene(null); }} 
+                  style={{ 
+                    padding: "8px 20px", 
+                    fontSize: 14, 
+                    fontWeight: 600, 
+                    cursor: "pointer", 
+                    borderRadius: 6, 
+                    border: "none", 
+                    background: "#e05c5c", 
+                    color: "#fff", 
+                    fontFamily: fUI 
+                  }}
+                >
+                  確認刪除
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
