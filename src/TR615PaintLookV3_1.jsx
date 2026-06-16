@@ -492,7 +492,8 @@ function Toggle({ on, onChange, label }) {
  */
 function BlockHeader({ title, sub, right }) {
   return (
-    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 14, gap: 10 }}>
+    // 2026-06-16 修改註記：配合 Chrome 100% 下防裁切，將 marginBottom 由 14 縮小為 6
+    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 6, gap: 10 }}>
       <div>
         <div style={{ fontSize: 17, fontWeight: 600, color: T.text }}>{title}</div>
         <div style={{ fontSize: 14, color: T.faint, marginTop: 2 }}>{sub}</div>
@@ -1539,10 +1540,12 @@ export default function App() {
               </div>
             }
           />
-          <div style={{ opacity: st.multiOn ? 1 : 0.35, pointerEvents: st.multiOn ? "auto" : "none", display: "flex", gap: 24, flexWrap: "wrap", alignItems: "center", width: "100%", boxSizing: "border-box" }}>
+          {/* 2026-06-16 修改註記：配合 Chrome 100% 下防裁切，將 gap 由 24 縮小為 10 */}
+          <div style={{ opacity: st.multiOn ? 1 : 0.35, pointerEvents: st.multiOn ? "auto" : "none", display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center", width: "100%", boxSizing: "border-box" }}>
 
             {multiStyle === "wheel" ? (
-              <div style={{ display: "flex", gap: 24, flexWrap: "wrap", alignItems: "center", width: "100%" }}>
+              <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center", width: "100%" }}>
+                {/* 2026-06-16 修改註記：配合 Chrome 100% 下防裁切，將 gap 由 24 縮小為 10 */}
                 {/* === 雷達色環:選擇態(6軸) ↔ 聚焦態(單軸) === */}
                 {/* 2026-06-16 修改註記：配合 Chrome 100% 縮放狀態下能完整顯現色相環，外層容器調整為 230px 並以 scale(0.78) 縮小顯示以防底部被裁切 */}
                 <div style={{ display: "flex", justifyContent: "center", alignItems: "center", width: 230, height: 230, flexShrink: 0, overflow: "visible" }}>
@@ -2405,10 +2408,11 @@ export default function App() {
             <div id="aver-adjustments-workspace" style={{ display: "flex", gap: 0, flex: 1, minHeight: 0, width: "100%" }}>
               
               {/* 左側選單切換 (Block Selection Navigation) */}
+              {/* 2026-06-16 修改註記：配合 Chrome 100% 下防裁切，將 padding 由 16px 12px 縮小為 8px 8px */}
               <div id="aver-adjustments-nav" style={{ 
                 width: 170, 
                 flexShrink: 0, 
-                padding: "16px 12px", 
+                padding: "8px 8px", 
                 boxSizing: "border-box", 
                 display: "flex", 
                 flexDirection: "column", 
@@ -2436,10 +2440,11 @@ export default function App() {
               </div>
               
               {/* 右側具體調整項 (Parameters Control Stage) */}
+              {/* 2026-06-16 修改註記：配合 Chrome 100% 下防裁切，將 padding 由 16px 20px 縮小為 8px 12px */}
               <div id="aver-adjustments-controls" style={{ 
                 flex: 1, 
                 borderLeft: `1px solid ${T.line}`, 
-                padding: "16px 20px", 
+                padding: "8px 12px", 
                 minWidth: 0, 
                 display: "flex", 
                 flexDirection: "column", 
