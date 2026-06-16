@@ -2182,7 +2182,8 @@ export default function App() {
           <div id="aver-content-wrapper" key="paint" className="aver-fade" style={{ display: "flex", flexDirection: "column", gap: 10, width: "100%", maxWidth: "1350px", margin: "0 auto", height: "100%", minHeight: 0 }}>
           
           {/* 1. LIVE 預覽與場景檔主控制台 */}
-          <div id="aver-preview-preset-panel" style={{ background: T.panel, border: `1px solid ${T.line}`, borderRadius: 10, padding: "14px 20px", display: "flex", flexDirection: "column", gap: 12, width: "100%", boxSizing: "border-box", flex: "1 1 0", minHeight: 0 }}>
+          {/* 2026-06-16 修改註記：配合各分頁面板高度一致，預覽區 flex 恢復為 1.25 */}
+          <div id="aver-preview-preset-panel" style={{ background: T.panel, border: `1px solid ${T.line}`, borderRadius: 10, padding: "14px 20px", display: "flex", flexDirection: "column", gap: 12, width: "100%", boxSizing: "border-box", flex: "1.25 1 0", minHeight: 0 }}>
             
             {/* 標題欄 */}
             <div id="aver-title-row" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 0, flexWrap: "wrap", gap: 8, flexShrink: 0 }}>
@@ -2307,7 +2308,8 @@ export default function App() {
             flexDirection: "column",
             gap: 0, 
             width: "100%", 
-            flex: "0 1 auto", 
+            // 2026-06-16 修改註記：配合各分頁面板高度一致，調整區 flex 恢復為 0.9 1 0，不使用 auto 彈性高度
+            flex: "0.9 1 0", 
             minHeight: 0,
             background: T.panel, 
             border: `1px solid ${T.line}`, 
