@@ -91,18 +91,15 @@ function hueRotate(r, g, b, deg) {
 }
 
 // 根據 Sony 廣播級攝影機標準定義 of 16 軸色彩順序
-const AXIS16 = ["B", "B+", "MG-", "MG", "MG+", "R", "R+", "YL-", "YL", "YL+", "G-", "G", "G+", "CY", "CY+", "B-"];
+// [2026-06-16 修改] 色相環選擇顏色設定從 12/16 軸改為 6 軸，移除過渡軸，僅保留 R, YL, G, CY, B, MG 6 個經典顏色。
+const AXIS16 = ["R", "YL", "G", "CY", "B", "MG"];
 
-// 16 軸對應的基礎色相角度 (0-360)。
-// [設計決策 / 已查證] 16 軸「等分」於色相環,每軸間隔 22.5° (360°÷16)。
-//   依據:Sony Multi-Matrix 的 16 個軸名 (B→B+→MG-→…→B-) 是一個固定循環序列繞色相圓一圈,
-//   等分是唯一合理的分布;軸名僅標示鄰近色區,並非釘在該顏色的精確位置。
-//   注意:此處為 UI/模擬用的等分近似;各軸對應「韌體的精確相位角」需以韌體定義為準 (列入 PM 釐清清單)。
-// [變更歷史] 先前曾誤用非均勻的 HSL 近似值 (B:230, YL:55…),已更正為等分計算。
-//   multi 區塊的色相環顯示亦使用同樣的等分 (區塊內本地 angUI),兩者一致。
+// 6 軸對應的基礎色相角度 (0-360)。
+// [設計決策 / 已查證] 6 軸「等分」於色相環,每軸間隔 60° (360°÷6)。
+// [變更歷史] 先前曾誤用非均勻的 HSL 近似值，現已更正為等分計算。
 const AXIS_HUE = (() => {
   const o = {}; const idxR = AXIS16.indexOf("R");
-  AXIS16.forEach((a, i) => { o[a] = ((i - idxR) * 22.5 + 360) % 360; });
+  AXIS16.forEach((a, i) => { o[a] = ((i - idxR) * 60 + 360) % 360; });
   return o;
 })();
 
@@ -150,11 +147,10 @@ function applyMulti(R, G, B, axes) {
   const ax = axes[AXIS16[best]];
   if (!ax || (ax.hue === 0 && ax.sat === 0)) return [R, G, B];
 
-  // [設計決策] 影響範圍 (半寬) 與 22.5° 軸間距對齊:相鄰兩軸的影響在交界處剛好交接,不過度重疊。
-  // (先前為 30°,與等分軸距不一致,已對齊為 22.5°。)
-  const w = Math.max(0, 1 - bd / 22.5);
-  h += (ax.hue / 99) * 22 * w;         // 最大調整偏轉約 22 度
-  s *= 1 + (ax.sat / 99) * 0.85 * w;   // 最大飽和度變更倍率
+  // [2026-06-16 修改] 影響範圍 (半寬) 改與 6 軸間距 60° 對齊，即半寬 30°；最大偏轉角度調整為約 30°
+  const w = Math.max(0, 1 - bd / 30);
+  h += (ax.hue / 99) * 30 * w;
+  s *= 1 + (ax.sat / 99) * 0.85 * w;
   
   return hsv2rgb(h, Math.min(1, s), v);
 }
@@ -309,7 +305,8 @@ const fMono = "'Consolas','Courier New',monospace";
 // 主要功能選單區塊定義
 const BLOCKS = [
   ["matrix", "Matrix", "User Matrix 色彩矩陣"],
-  ["multi", "Multi-Matrix", "16 軸分區色彩"],
+  // 2026-06-16 修改註記：將 Multi-Matrix 描述由 16 軸改為 6 軸
+  ["multi", "Multi-Matrix", "6 軸分區色彩"],
   ["detail", "Detail", "輪廓銳利度"],
   ["knee", "Knee", "高光壓縮"],
   ["black", "Black Level", "黑位準"],
@@ -467,16 +464,26 @@ function VFader({ axis, kind, val, fillColor, mOff, updAxis, startDrag, endDrag 
  * 開關按鈕組件 (Switch / Toggle)
  */
 function Toggle({ on, onChange, label }) {
+  // 2026-06-16 修改註記：為了解決 ON / OFF 寬度不同與 button:active 造成 UI 跳動的問題，
+  // 將 button 標籤改為 div，並為 ON / OFF 設定固定寬度 (32px)
+  const isOnOff = label === "ON" || label === "OFF";
+  const labelStyle = isOnOff
+    ? { fontSize: 14, color: on ? T.text : T.dim, width: 32, display: "inline-block", textAlign: "left" }
+    : { fontSize: 14, color: on ? T.text : T.dim };
+
   return (
-    <button 
+    <div 
+      role="button"
+      tabIndex={0}
       onClick={() => onChange(!on)} 
-      style={{ display: "flex", alignItems: "center", gap: 8, background: "none", border: "none", cursor: "pointer", padding: 0 }}
+      onKeyDown={(e) => { if (e.key === " " || e.key === "Enter") { e.preventDefault(); onChange(!on); } }}
+      style={{ display: "flex", alignItems: "center", gap: 8, background: "none", border: "none", cursor: "pointer", padding: 0, userSelect: "none" }}
     >
       <span style={{ width: 34, height: 18, borderRadius: 9, background: on ? T.blue : T.line2, position: "relative", transition: "background .3s ease" }}>
         <span style={{ position: "absolute", top: 2, left: on ? 18 : 2, width: 14, height: 14, borderRadius: 7, background: "#fff", transition: "left .3s cubic-bezier(.34,1.56,.64,1)" }} />
       </span>
-      {label && <span style={{ fontSize: 14, color: on ? T.text : T.dim }}>{label}</span>}
-    </button>
+      {label && <span style={labelStyle}>{label}</span>}
+    </div>
   );
 }
 
@@ -947,10 +954,11 @@ export default function App() {
     const cx = rect.left + rect.width / 2, cy = rect.top + rect.height / 2;
     const dx = e.clientX - cx, dy = e.clientY - cy;
     const fHue = (Math.atan2(dy, dx) * 180 / Math.PI + 90 + 360) % 360;
-    const base = ((AXIS16.indexOf(selAxis) - AXIS16.indexOf("R")) * 22.5 + 360) % 360;
+    // 2026-06-16 修改註記：配合色相環選擇顏色設定從 12/16 軸改為 6 軸，將每個軸的間距改為 60° (360 / 6)，限制範圍改為左右 ±30°
+    const base = ((AXIS16.indexOf(selAxis) - AXIS16.indexOf("R")) * 60 + 360) % 360;
     let off = ((fHue - base + 540) % 360) - 180;       // 正規化到 [-180,180]
-    off = Math.max(-22.5, Math.min(22.5, off));         // 限制在該軸 ±22.5° 範圍
-    setDraftHue(Math.round(off / 22.5 * 99));
+    off = Math.max(-30, Math.min(30, off));             // 限制在該軸 ±30° 範圍
+    setDraftHue(Math.round(off / 30 * 99));
     const radius = Math.hypot(dx, dy) * (290 / rect.width); // 換算回內部 290 座標
     // Saturation 半徑映射:半徑行程 ±14px(在環帶內),與下方節點顯示用同一基準 → 游標與圓圈重合
     setDraftSat(Math.max(-99, Math.min(99, Math.round((radius - 114) / 14 * 99))));
@@ -1074,7 +1082,8 @@ export default function App() {
       setImgLoaded(true);
     };
 
-    img.src = "/meeting_room.png?t=" + Date.now();
+    // 2026-06-16 修改註記：修復 live preview 照片不見的問題，改用相對路徑避免 GitHub Pages 部署時基底路徑錯誤
+    img.src = "meeting_room.png?t=" + Date.now();
   }, []);
 
   // ==========================================================================
@@ -1220,8 +1229,9 @@ export default function App() {
               }
             }
             
-            if (bestAx && bd < 22.5) {
-              const w = 1 - bd / 22.5; // 與 22.5° 軸間距對齊 (見 applyMulti 註解)
+            // 2026-06-16 修改註記：配合 6 軸 (間距 60°)，將影響半寬度 (falloff) 由 22.5° 修改為 30°
+            if (bestAx && bd < 30) {
+              const w = 1 - bd / 30; // 與 30° 軸間距對齊 (見 applyMulti 註解)
               let newH = h + bestAx.hueAdj * w;
               let newS = sVal * (1 + bestAx.satAdj * w);
               if (newS > 1) newS = 1;
@@ -1494,12 +1504,13 @@ export default function App() {
       const touchedCount = AXIS16.filter((a) => st.axes[a].hue !== 0 || st.axes[a].sat !== 0).length;
       // 16 軸等分色相環,每軸 22.5°,R 軸在環頂 (0°)
       const angUI = {};
-      AXIS16.forEach((a, i) => { const idxR = AXIS16.indexOf("R"); angUI[a] = ((i - idxR) * 22.5 + 360) % 360; });
+      // 2026-06-16 修改註記：配合 6 軸 (間距 60°)，每軸等分由 22.5° 改為 60°，fHue 偏移改為 ±30°
+      AXIS16.forEach((a, i) => { const idxR = AXIS16.indexOf("R"); angUI[a] = ((i - idxR) * 60 + 360) % 360; });
 
       // 聚焦態:整個環即時反映「草稿」的 Hue/Sat(尚未寫入 st,按確定才套用)
       const fHueSrc = isFocused ? draftHue : (ax ? ax.hue : 0);
       const fSatSrc = isFocused ? draftSat : (ax ? ax.sat : 0);
-      const fHue = selAxis ? ((angUI[selAxis] + (fHueSrc / 99) * 22.5 + 360) % 360) : 0;
+      const fHue = selAxis ? ((angUI[selAxis] + (fHueSrc / 99) * 30 + 360) % 360) : 0;
       const fSat = Math.max(8, Math.min(100, 70 + (fSatSrc / 99) * 30));
       const ringSelect = "conic-gradient(from 0deg, hsl(0 85% 58%), hsl(60 85% 55%), hsl(120 70% 50%), hsl(180 75% 52%), hsl(240 85% 62%), hsl(300 85% 60%), hsl(360 85% 58%))";
       const ringFocus = `conic-gradient(from ${fHue - 90}deg, hsl(${fHue} ${fSat}% 22%), hsl(${fHue} ${fSat}% 58%) 50%, hsl(${fHue} ${fSat}% 22%))`;
@@ -1509,7 +1520,7 @@ export default function App() {
         <div id="aver-control-params-multi">
           <BlockHeader
             title="Multi-Matrix"
-            sub="16 軸分區 — 只調整特定色相範圍，不影響其他顏色"
+            sub="6 軸分區 — 只調整特定色相範圍，不影響其他顏色"
             right={
               <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
                 {/* 兩種 UX 呈現方式切換 (demo) */}
@@ -1532,11 +1543,13 @@ export default function App() {
 
             {multiStyle === "wheel" ? (
               <div style={{ display: "flex", gap: 24, flexWrap: "wrap", alignItems: "center", width: "100%" }}>
-                {/* === 雷達色環:選擇態(16軸) ↔ 聚焦態(單軸) === */}
-                <div ref={ringRef} 
-                  onClick={(e) => { if (!mOff && !isFocused) setSelAxis(null); }}
-                  style={{ position: "relative", width: 290, height: 290, flexShrink: 0 }}
-                >
+                {/* === 雷達色環:選擇態(6軸) ↔ 聚焦態(單軸) === */}
+                {/* 2026-06-16 修改註記：配合 Chrome 100% 縮放狀態下能完整顯現色相環，外層容器調整為 250px 並以 scale(0.86) 縮小顯示 */}
+                <div style={{ display: "flex", justifyContent: "center", alignItems: "center", width: 250, height: 250, flexShrink: 0, overflow: "visible" }}>
+                  <div ref={ringRef} 
+                    onClick={(e) => { if (!mOff && !isFocused) setSelAxis(null); }}
+                    style={{ position: "relative", width: 290, height: 290, flexShrink: 0, transform: "scale(0.86)", transformOrigin: "center center" }}
+                  >
                   {/* [聚焦進場] 從中心射向環的擴張光環(每次選軸重播);發光用徑向漸層自含,不溢出容器避免被裁切 */}
                   {isFocused && (
                     <div key={"burst-" + selAxis} style={{ position: "absolute", left: "50%", top: "50%", width: 150, height: 150, borderRadius: "50%", border: `2px solid hsl(${fHue} 85% 62%)`, background: `radial-gradient(circle, transparent 56%, hsl(${fHue} 85% 60% / .45) 70%, transparent 82%)`, transform: "translate(-50%,-50%)", animation: "averBurst .88s cubic-bezier(0.16, 1, 0.3, 1) both", pointerEvents: "none", zIndex: 7 }} />
@@ -1603,16 +1616,17 @@ export default function App() {
                     const base = angUI[selAxis];
                     const px = (deg, r) => 145 + Math.cos((deg - 90) * Math.PI / 180) * r;
                     const py = (deg, r) => 145 + Math.sin((deg - 90) * Math.PI / 180) * r;
-                    const a0 = base - 22.5, a1 = base + 22.5;
+                    // 2026-06-16 修改註記：配合 6 軸 (間距 60°)，扇形繪製範圍改為 ±30°
+                    const a0 = base - 30, a1 = base + 30;
                     const rIn = 86, rOut = 132;
                     const segPath = (s0, s1) =>
                       `M ${px(s0, rOut)} ${py(s0, rOut)} A ${rOut} ${rOut} 0 0 1 ${px(s1, rOut)} ${py(s1, rOut)} L ${px(s1, rIn)} ${py(s1, rIn)} A ${rIn} ${rIn} 0 0 0 ${px(s0, rIn)} ${py(s0, rIn)} Z`;
                     const fullSector = `M ${px(a0, rOut)} ${py(a0, rOut)} A ${rOut} ${rOut} 0 0 1 ${px(a1, rOut)} ${py(a1, rOut)} L ${px(a1, rIn)} ${py(a1, rIn)} A ${rIn} ${rIn} 0 0 0 ${px(a0, rIn)} ${py(a0, rIn)} Z`;
                     const N = 24; // 密切片 → 平滑彩虹漸層
                     const slices = Array.from({ length: N }, (_, i) => {
-                      const s0 = a0 + (i / N) * 45, s1 = a0 + ((i + 1.4) / N) * 45; // 重疊避免接縫
+                      const s0 = a0 + (i / N) * 60, s1 = a0 + ((i + 1.4) / N) * 60; // 重疊避免接縫
                       // 與選擇態彩虹環同一套鮮明配方:高飽和、明亮 (hsl 85% 58%)
-                      const hue = (base - 22.5 + ((i + 0.5) / N) * 45 + 360) % 360;
+                      const hue = (base - 30 + ((i + 0.5) / N) * 60 + 360) % 360;
                       return { d: segPath(s0, Math.min(a1, s1)), fill: `hsl(${hue} 85% 58%)` };
                     });
                     return (
@@ -1694,7 +1708,7 @@ export default function App() {
                     ) : (
                       <>
                         <span style={{ fontSize: 12, letterSpacing: 2, color: T.faint, fontFamily: fMono }}>選擇色相軸</span>
-                        <span style={{ fontSize: 18, fontWeight: 600, color: T.dim, lineHeight: 1.2, marginTop: 2 }}>16 軸</span>
+                        <span style={{ fontSize: 18, fontWeight: 600, color: T.dim, lineHeight: 1.2, marginTop: 2 }}>6 軸</span>
                         {anyTouched ? (
                           <span style={{ fontSize: 11, color: T.amber, marginTop: 3, fontFamily: fMono }}>● 已調整 {touchedCount} 軸</span>
                         ) : (
@@ -1704,6 +1718,7 @@ export default function App() {
                     )}
                   </div>
                 </div>
+              </div>
 
                 <div style={{ flex: 1, minWidth: 240 }}>
                   {isFocused ? (
@@ -1826,7 +1841,8 @@ export default function App() {
                 style={{ width: "100%", display: "flex", flexDirection: "column", gap: 12 }}
               >
                 <div onClick={(e) => { e.stopPropagation(); }} style={{ fontSize: 14, color: T.dim, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                  <span>16 軸色彩等化器 — 在卡片內直接調整，或點擊選中當前軸：</span>
+                  {/* 2026-06-16 修改註記：配合 6 軸調整，標題改為 6 軸色彩等化器 */}
+                  <span>6 軸色彩等化器 — 在卡片內直接調整，或點擊選中當前軸：</span>
                   <button onClick={() => upd("axes", DEF_AXES())} disabled={mOff}
                     style={{ background: "none", border: "none", color: mOff ? T.faint : T.blue, cursor: mOff ? "default" : "pointer", fontSize: 14, fontFamily: fUI, padding: 0 }}>
                     全部重設歸零
@@ -1834,7 +1850,7 @@ export default function App() {
                 </div>
                 <div 
                   onClick={(e) => { if (!mOff) setSelAxis(null); }}
-                  style={{ display: "grid", gridTemplateColumns: "repeat(8, 1fr)", gap: 10, width: "100%", boxSizing: "border-box" }}
+                  style={{ display: "grid", gridTemplateColumns: "repeat(6, 1fr)", gap: 10, width: "100%", boxSizing: "border-box" }}
                 >
                   {AXIS16.map((a) => {
                     const axObj = st.axes[a];
