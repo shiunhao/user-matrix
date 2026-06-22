@@ -2933,7 +2933,7 @@ export default function App() {
                   {/* 預覽畫面外層 container: 填滿剩餘高度與寬度 */}
                   <div style={{ position: "relative", borderRadius: 10, overflow: "hidden", border: `1px solid ${T.line}`, width: "100%", flex: 1, minHeight: 0, background: "#000", display: "flex", alignItems: "center", justifyContent: "center", boxSizing: "border-box" }}>
                     {/* 內層 16:9 預覽區：最大化維持 16:9 比例 */}
-                    <div style={{ position: "relative", width: "100%", height: "100%", maxWidth: "100%", maxHeight: "100%", aspectRatio: "16 / 9", overflow: "hidden" }}>
+                    <div style={{ position: "relative", width: "100%", height: "auto", maxHeight: "100%", aspectRatio: "16 / 9", overflow: "hidden" }}>
                       <div style={{ position: "absolute", inset: 0, backgroundImage: "url(meeting_room.png)", backgroundSize: "cover", backgroundPosition: "center" }} />
                       <span style={{ position: "absolute", left: 12, top: 10, fontFamily: fMono, fontSize: 14, color: "rgba(255,255,255,.9)", textShadow: "0 1px 2px #000", fontWeight: 600, zIndex: 10 }}>● LIVE(模擬畫面)</span>
                     </div>
@@ -3066,7 +3066,7 @@ export default function App() {
                   {/* 預覽畫面外層 container: 填滿剩餘高度與寬度 */}
                   <div style={{ position: "relative", borderRadius: 10, overflow: "hidden", border: `1px solid ${T.line}`, width: "100%", flex: 1, minHeight: 0, background: "#000", display: "flex", alignItems: "center", justifyContent: "center", boxSizing: "border-box" }}>
                     {/* 內層 16:9 預覽區：最大化維持 16:9 比例 */}
-                    <div style={{ position: "relative", width: "100%", height: "100%", maxWidth: "100%", maxHeight: "100%", aspectRatio: "16 / 9", overflow: "hidden" }}>
+                    <div style={{ position: "relative", width: "100%", height: "auto", maxHeight: "100%", aspectRatio: "16 / 9", overflow: "hidden" }}>
                       <div
                         style={{
                           position: "absolute",
