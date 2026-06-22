@@ -2432,9 +2432,7 @@ export default function App() {
       {isDirty && activeScene !== "std" && activeScene != null && (
         <button onClick={() => { const s = scenes.find((x) => x.id === activeScene); if (s) updateScene(s); }} style={{ padding: "6px 14px", fontSize: 14, fontWeight: 600, cursor: "pointer", borderRadius: 6, border: `1px solid ${T.blueDark}`, background: "rgba(30,155,240,0.12)", color: T.blue, fontFamily: fUI }}>覆寫當前場景</button>
       )}
-      {isDirty && (
-        <button onClick={() => { setSt(JSON.parse(JSON.stringify(getActiveSceneData()))); setIsFocused(false); setSaveOpen(false); flash(activeScene === "std" ? "已回復為原廠預設值" : "已回復到此場景的存檔狀態"); }} style={{ padding: "6px 14px", fontSize: 14, fontWeight: 600, cursor: "pointer", borderRadius: 6, border: `1px solid ${T.line2}`, background: "transparent", color: T.dim, fontFamily: fUI }}>回復到改動前</button>
-      )}
+
       <button onClick={() => { setSaveOpen((v) => !v); setEditingScene(null); setScName(""); setScRemark(""); }} disabled={!isDirty || scenes.length >= 16} style={{ padding: "6px 14px", fontSize: 14, fontWeight: 600, cursor: (!isDirty || scenes.length >= 16) ? "not-allowed" : "pointer", borderRadius: 6, border: "none", background: (!isDirty || scenes.length >= 16) ? "rgba(255, 255, 255, 0.08)" : T.blue, color: (!isDirty || scenes.length >= 16) ? T.faint : "#fff", fontFamily: fUI, opacity: (!isDirty || scenes.length >= 16) ? 0.45 : 1 }}>另存為新場景</button>
     </div>
   );
@@ -2932,31 +2930,7 @@ export default function App() {
                     覆寫當前場景
                   </button>
                 )}
-                {isDirty && (
-                  <button
-                    onClick={() => {
-                      setSt(JSON.parse(JSON.stringify(getActiveSceneData())));
-                      setIsFocused(false);
-                      setSaveOpen(false);
-                      flash(activeScene === "std" ? "已回復為原廠預設值" : "已回復到此場景的存檔狀態");
-                    }}
-                    title="放棄目前未儲存的修改,回到改動前的狀態"
-                    style={{
-                      padding: "6px 14px",
-                      fontSize: 14,
-                      fontWeight: 600,
-                      cursor: "pointer",
-                      borderRadius: 6,
-                      border: `1px solid ${T.line2}`,
-                      background: "transparent",
-                      color: T.dim,
-                      fontFamily: fUI,
-                      transition: "all 0.28s cubic-bezier(0.16, 1, 0.3, 1)"
-                    }}
-                  >
-                    回復到改動前
-                  </button>
-                )}
+
                 <button 
                   onClick={() => { setSaveOpen((v) => !v); setEditingScene(null); setScName(""); setScRemark(""); }} 
                   disabled={!isDirty || scenes.length >= 16} 
