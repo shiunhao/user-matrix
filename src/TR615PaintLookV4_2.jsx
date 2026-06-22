@@ -2722,9 +2722,7 @@ export default function App() {
             </button>
           </div>
         )}
-        <div style={{ margin: "auto 16px 20px", padding: "12px 14px", borderRadius: 8, background: "rgba(30,155,240,0.06)", border: `1px solid ${T.line}`, fontSize: 14, color: T.faint, lineHeight: 1.6 }}>
-          原型示意: 點擊選單切換 Camera Settings、Video & Audio 與 Paint / Look。
-        </div>
+
       </div>
 
       {/* 主工作區 (Main Stage Panel) */}
