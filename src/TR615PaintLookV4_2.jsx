@@ -1719,51 +1719,16 @@ export default function App() {
       const mOff = false;
 
       const isCinema = paintLayout === "cinema";
-      const styleToggle = (
-        <div style={{ display: "flex", background: "#101216", border: `1px solid ${T.line}`, borderRadius: 6, padding: 3, gap: 4, alignItems: "center", width: isCinema ? "100%" : "auto", boxSizing: "border-box" }}>
-          {[["wheel", "雷達色環"], ["wheel2", "雷達色環2"], ["strip", "色彩量錶"]].map(([id, lb]) => (
-            <button key={id}
-              onClick={() => { setMultiStyle(id); setIsFocused(false); }}
-              style={{ 
-                flex: isCinema ? 1 : "initial",
-                padding: isCinema ? "5px 0" : "4px 10px", 
-                fontSize: 13, 
-                cursor: "pointer", 
-                borderRadius: 4, 
-                border: "none",
-                background: multiStyle === id ? T.blue : "transparent",
-                color: multiStyle === id ? "#fff" : T.dim, 
-                fontFamily: fUI, 
-                transition: "all .28s ease",
-                textAlign: "center"
-              }}
-            >
-              {lb}
-            </button>
-          ))}
-        </div>
-      );
-
       return (
         <div id="aver-control-params-multi" style={{ display: "flex", flexDirection: "column", flex: 1, minHeight: 0, overflow: (multiStyle === "wheel" || multiStyle === "wheel2") ? "visible" : "hidden" }}>
           {isCinema ? (
-            <>
-              <BlockHeader
-                title="Multi-Matrix"
-              />
-              <div style={{ padding: "0 0 10px 0", flexShrink: 0 }}>
-                {styleToggle}
-              </div>
-            </>
+            <BlockHeader
+              title="Multi-Matrix"
+            />
           ) : (
             <BlockHeader
               title="Multi-Matrix"
               sub="6 軸分區 — 只調整特定色相範圍，不影響其他顏色"
-              right={
-                <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
-                  {styleToggle}
-                </div>
-              }
             />
           )}
           <div style={{ display: "flex", flexDirection: "column", justifyContent: "flex-start", gap: 10, width: "100%", boxSizing: "border-box", flex: 1, minHeight: 0, overflow: (multiStyle === "wheel" || multiStyle === "wheel2") ? "visible" : "auto", padding: "10px 0" }}>
@@ -2450,6 +2415,33 @@ export default function App() {
       {isDirty && (<span style={{ fontSize: 14, fontWeight: 600, color: T.amber, background: "rgba(245,166,35,0.1)", padding: "3px 8px", borderRadius: 4, border: `1px solid rgba(245,166,35,0.2)` }}>● 已修改未儲存</span>)}
     </div>
   );
+  // 設計樣式切換鈕(雷達色環 / 雷達色環2 / 色彩量錶)
+  const paintStyleToggle = () => {
+    return (
+      <div style={{ display: "flex", background: "#101216", border: `1px solid ${T.line}`, borderRadius: 6, padding: 3, gap: 4, alignItems: "center", width: "auto", boxSizing: "border-box" }}>
+        {[["wheel", "雷達色環"], ["wheel2", "雷達色環2"], ["strip", "色彩量錶"]].map(([id, lb]) => (
+          <button key={id}
+            onClick={() => { setMultiStyle(id); setIsFocused(false); }}
+            style={{ 
+              padding: "4px 10px", 
+              fontSize: 13, 
+              cursor: "pointer", 
+              borderRadius: 4, 
+              border: "none",
+              background: multiStyle === id ? T.blue : "transparent",
+              color: multiStyle === id ? "#fff" : T.dim, 
+              fontFamily: fUI, 
+              transition: "all .28s ease",
+              textAlign: "center"
+            }}
+          >
+            {lb}
+          </button>
+        ))}
+      </div>
+    );
+  };
+
   // 版面切換鈕(經典 / 劇院) - 滑塊式過渡動畫版
   const paintLayoutToggle = () => {
     const isClassic = paintLayout === "classic";
@@ -3869,10 +3861,29 @@ export default function App() {
           </div>
         )}
 
-        {/* 版面懸浮切換按鈕 (置於右下角，最高層級) */}
+        {/* 設計與版面雙重切換按鈕 (懸浮於畫面右側，最高層級) */}
         {activeMenu === "paint" && (
-          <div style={{ position: "absolute", right: 24, bottom: 20, zIndex: 9999, boxShadow: "0 4px 16px rgba(0, 0, 0, 0.6)", borderRadius: 8 }}>
-            {paintLayoutToggle()}
+          <div style={{ 
+            position: "absolute", 
+            right: 24, 
+            bottom: 24, 
+            zIndex: 9999, 
+            display: "flex", 
+            flexDirection: "column", 
+            gap: 12, 
+            alignItems: "flex-end",
+            pointerEvents: "none"
+          }}>
+            {/* 雷達色相環設計樣式切換鈕 */}
+            {block === "multi" && (
+              <div style={{ pointerEvents: "auto", boxShadow: "0 4px 16px rgba(0, 0, 0, 0.6)", borderRadius: 6 }}>
+                {paintStyleToggle()}
+              </div>
+            )}
+            {/* 版面切換鈕 */}
+            <div style={{ pointerEvents: "auto", boxShadow: "0 4px 16px rgba(0, 0, 0, 0.6)", borderRadius: 8 }}>
+              {paintLayoutToggle()}
+            </div>
           </div>
         )}
       </div>
