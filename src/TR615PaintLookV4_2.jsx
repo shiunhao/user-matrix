@@ -1998,7 +1998,7 @@ export default function App() {
                 </div>
               </div>
 
-                <div style={{ flex: 1, minWidth: 240 }} onClick={(e) => e.stopPropagation()}>
+                <div style={{ flex: 1, minWidth: 240, height: "100%", display: "flex", flexDirection: "column", minHeight: 0 }} onClick={(e) => e.stopPropagation()}>
                   {multiStyle === "wheel2" ? (
                     <div style={{ display: "flex", flexDirection: "column", gap: 0, height: "100%", width: "100%" }}>
                       <div style={{ fontSize: 14, color: T.text, fontWeight: 600, marginBottom: 8 }}>
