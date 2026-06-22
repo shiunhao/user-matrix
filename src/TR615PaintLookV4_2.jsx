@@ -1139,10 +1139,10 @@ export default function App() {
     for (let angle = 0; angle < 360; angle++) {
       const angleRad = (angle - 90) * Math.PI / 180;
       let hue = angle;
-      let sIn = 12;   // 內圈飽和度降至 12% (真實去色)
-      let lIn = 12;   // 內圈明度降至 12% (真實變暗)
-      let sOut = 100; // 外圈飽和度 100% (調至最高)
-      let lOut = 58;  // 外圈明度 58%
+      let sIn = 85;   // 預設 (非 Focus): 內圈飽和度 85%
+      let lIn = 52;   // 預設 (非 Focus): 內圈明度 52%
+      let sOut = 85;  // 預設 (非 Focus): 外圈飽和度 85%
+      let lOut = 58;  // 預設 (非 Focus): 外圈明度 58%
 
       if (isFocused && selAxis) {
         // 聚焦態下，選中軸的 ±30度 扇區高亮，其他區域變暗
@@ -1918,8 +1918,8 @@ export default function App() {
                     const rNode = 119.75 + (nodeSatVal / 99) * 25.25;
                     const x = 145 + Math.cos(dispAng) * rNode, y = 145 + Math.sin(dispAng) * rNode;
                     const nodeHue = (nodeAngDeg + 360) % 360;
-                    const nodeSat = Math.min(1.0, 0.66 + (nodeSatVal / 99) * 0.44);
-                    const nodeVal = 0.58 + (nodeSatVal / 99) * 0.37;
+                    const nodeSat = isDragNode ? Math.min(1.0, 0.66 + (draftSat / 99) * 0.34) : 0.85;
+                    const nodeVal = isDragNode ? Math.min(1.0, 0.58 + (draftSat / 99) * 0.42) : 0.95;
                     const [r, g, b] = hsv2rgb(nodeHue, nodeSat, nodeVal);
                     const touched = st.axes[a].hue !== 0 || st.axes[a].sat !== 0;
                     // [C] 有調整過的軸存在時,未調整且未選中的節點降存在感(縮小+變淡),讓調過的浮出
