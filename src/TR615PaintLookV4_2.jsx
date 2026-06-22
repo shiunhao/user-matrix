@@ -3866,7 +3866,8 @@ export default function App() {
           <div style={{ 
             position: "absolute", 
             right: 24, 
-            bottom: 24, 
+            top: "50%",
+            transform: "translateY(-50%)",
             zIndex: 9999, 
             display: "flex", 
             flexDirection: "column", 
