@@ -2923,7 +2923,7 @@ export default function App() {
           )}
         </div>
         ) : activeMenu === "live" ? (
-          <div id="aver-live-view-wrapper" key="live" className="aver-fade" style={{ display: "flex", flexDirection: "column", gap: 12, width: "100%", maxWidth: "1350px", margin: "0 auto", height: "100%", minHeight: 0 }}>
+          <div id="aver-live-view-wrapper" key="live" className="aver-fade" style={{ display: "flex", flexDirection: "column", gap: 10, width: "100%", maxWidth: "1350px", margin: "0 auto", height: "100%", minHeight: 0 }}>
             {(() => {
               const sqStyle = (active) => ({ width: 42, height: 42, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", borderRadius: 8, border: `1px solid ${active ? T.blue : T.line2}`, background: active ? T.blue : T.panel2, color: active ? "#fff" : T.text, fontSize: 17, fontFamily: fUI });
               const sec = { border: `1px solid ${T.line}`, borderRadius: 8, padding: "10px 12px", background: "rgba(0,0,0,0.12)", boxSizing: "border-box" };
@@ -2931,7 +2931,7 @@ export default function App() {
               return (
                 <>
                   {/* 預覽畫面:固定 16:9,寬度變小時整體等比縮小 */}
-                  <div style={{ position: "relative", borderRadius: 10, overflow: "hidden", border: `1px solid ${T.line}`, width: "100%", maxWidth: "min(880px, calc((100vh - 420px) * 1.777))", aspectRatio: "16 / 9", maxHeight: "100%", background: "linear-gradient(160deg,#11151b,#05070a)", flexShrink: 0, margin: "0 auto" }}>
+                  <div style={{ position: "relative", borderRadius: 10, overflow: "hidden", border: `1px solid ${T.line}`, width: "100%", maxWidth: "min(880px, calc((100vh - 460px) * 1.777))", aspectRatio: "16 / 9", maxHeight: "100%", background: "linear-gradient(160deg,#11151b,#05070a)", flexShrink: 0, margin: "0 auto" }}>
                     <div style={{ position: "absolute", inset: 0, backgroundImage: "url(meeting_room.png)", backgroundSize: "cover", backgroundPosition: "center" }} />
                     <span style={{ position: "absolute", left: 12, top: 10, fontFamily: fMono, fontSize: 14, color: "rgba(255,255,255,.9)", textShadow: "0 1px 2px #000", fontWeight: 600, zIndex: 10 }}>● LIVE(模擬畫面)</span>
                   </div>
@@ -3049,7 +3049,7 @@ export default function App() {
             })()}
           </div>
         ) : activeMenu === "camera" ? (
-          <div id="aver-camera-settings-wrapper" key="camera" className="aver-fade" style={{ display: "flex", flexDirection: "column", gap: 12, width: "100%", maxWidth: "1350px", margin: "0 auto", height: "100%", minHeight: 0 }}>
+          <div id="aver-camera-settings-wrapper" key="camera" className="aver-fade" style={{ display: "flex", flexDirection: "column", gap: 10, width: "100%", maxWidth: "1350px", margin: "0 auto", height: "100%", minHeight: 0 }}>
             {(() => {
               const en = EXP_ENABLED[cam.expMode];
               const ndMul = { clear: 1, nd4: 0.72, nd16: 0.5, nd128: 0.32 }[cam.ndFilter] ?? 1;
@@ -3061,7 +3061,7 @@ export default function App() {
               return (
                 <>
                   {/* 預覽畫面:固定 16:9,寬度變小時整體等比縮小 */}
-                  <div style={{ position: "relative", borderRadius: 10, overflow: "hidden", border: `1px solid ${T.line}`, width: "100%", maxWidth: "min(880px, calc((100vh - 420px) * 1.777))", aspectRatio: "16 / 9", maxHeight: "100%", background: "linear-gradient(160deg,#11151b,#05070a)", flexShrink: 0, margin: "0 auto" }}>
+                  <div style={{ position: "relative", borderRadius: 10, overflow: "hidden", border: `1px solid ${T.line}`, width: "100%", maxWidth: "min(880px, calc((100vh - 460px) * 1.777))", aspectRatio: "16 / 9", maxHeight: "100%", background: "linear-gradient(160deg,#11151b,#05070a)", flexShrink: 0, margin: "0 auto" }}>
                     <div
                       style={{
                         position: "absolute",
