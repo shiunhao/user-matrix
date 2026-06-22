@@ -1677,7 +1677,7 @@ export default function App() {
             title="Matrix · User Matrix" 
             right={
               <div style={{ width: 80 }}>
-                <MiniBtn onClick={() => { if (!mOff) MATRIX_KEYS.forEach(([k]) => upd(k, 0)); }} disabled={mOff}>default</MiniBtn>
+                <MiniBtn onClick={() => MATRIX_KEYS.forEach(([k]) => upd(k, 0))}>default</MiniBtn>
               </div>
             }
           />
