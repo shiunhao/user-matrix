@@ -2163,104 +2163,108 @@ export default function App() {
                       <Note>環即時預覽調整後的色相與飽和度,<span style={{ color: T.amber }}>需按「確定」才套用</span>;「取消」放棄變更。</Note>
                     </div>
                   ) : (
-                    <>
+                    <div style={{ display: "flex", flexDirection: "column", flex: 1, height: "100%", minHeight: 0 }}>
                       <div style={{ fontSize: 14, color: T.text, fontWeight: 600, marginBottom: 6 }}>選擇要調整的色相軸</div>
                       <div style={{ fontSize: 12.5, color: T.dim, lineHeight: 1.6, marginBottom: 14 }}>
                         請點擊左側色相環上的節點（如 Red, Yellow 等）或下方已調整的晶片標籤，即可進入該色彩軸進行詳細微調。
                       </div>
 
-                      {AXIS16.some((a) => st.axes[a].hue || st.axes[a].sat) ? (
-                        <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 14 }}>
-                          <span style={{ fontSize: 13.5, color: "rgba(255, 255, 255, 0.7)", fontWeight: 600, width: "100%", marginBottom: 4 }}>已調整的軸:</span>
-                          {AXIS16.filter((a) => st.axes[a].hue || st.axes[a].sat).map((a) => {
-                            const FULL_NAME = { R: "Red", YL: "Yellow", G: "Green", CY: "Cyan", B: "Blue", MG: "Magenta" };
-                            const dotCol = `hsl(${angUI[a]} 90% 55%)`;
-                            return (
-                              <div
-                                key={a}
-                                onClick={() => enterFocus(a)}
-                                style={{
-                                  display: "flex",
-                                  alignItems: "center",
-                                  gap: "9px",
-                                  padding: "6px 14px",
-                                  background: "#181d24",
-                                  border: "1px solid rgba(255, 255, 255, 0.12)",
-                                  borderRadius: "18px",
-                                  cursor: "pointer",
-                                  userSelect: "none",
-                                  transition: "all 0.22s ease-out",
-                                  boxShadow: "0 2px 5px rgba(0,0,0,0.25)"
-                                }}
-                                onMouseEnter={(e) => {
-                                  e.currentTarget.style.borderColor = "rgba(255, 255, 255, 0.35)";
-                                  e.currentTarget.style.background = "#202730";
-                                  e.currentTarget.style.boxShadow = `0 0 10px ${dotCol}25, 0 2px 5px rgba(0,0,0,0.25)`;
-                                }}
-                                onMouseLeave={(e) => {
-                                  e.currentTarget.style.borderColor = "rgba(255, 255, 255, 0.12)";
-                                  e.currentTarget.style.background = "#181d24";
-                                  e.currentTarget.style.boxShadow = "0 2px 5px rgba(0,0,0,0.25)";
-                                }}
-                              >
-                                {/* 左側色彩指示點 */}
-                                <span style={{ width: 9, height: 9, borderRadius: "50%", background: dotCol, boxShadow: `0 0 7px ${dotCol}` }} />
-                                
-                                {/* 中間文字 (全稱 + 數值) */}
-                                <span style={{ fontSize: 14, fontWeight: 700, color: "#fff", fontFamily: fUI }}>
-                                  {FULL_NAME[a]}
-                                </span>
-                                <span style={{ fontSize: 12, color: "rgba(255,255,255,0.48)", fontFamily: fMono }}>
-                                  H{st.axes[a].hue >= 0 ? "+" : ""}{st.axes[a].hue} S{st.axes[a].sat >= 0 ? "+" : ""}{st.axes[a].sat}
-                                </span>
-
-                                {/* 右側重設 ✕ 按鈕 */}
-                                <button
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    if (mOff) return;
-                                    updAxis(a, "hue", 0);
-                                    updAxis(a, "sat", 0);
-                                  }}
-                                  title="將此軸歸零"
+                      <div style={{ flex: 1, overflowY: "auto", marginBottom: 14, minHeight: 0 }}>
+                        {AXIS16.some((a) => st.axes[a].hue || st.axes[a].sat) ? (
+                          <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                            <span style={{ fontSize: 13.5, color: "rgba(255, 255, 255, 0.7)", fontWeight: 600, width: "100%", marginBottom: 4 }}>已調整的軸:</span>
+                            {AXIS16.filter((a) => st.axes[a].hue || st.axes[a].sat).map((a) => {
+                              const FULL_NAME = { R: "Red", YL: "Yellow", G: "Green", CY: "Cyan", B: "Blue", MG: "Magenta" };
+                              const dotCol = `hsl(${angUI[a]} 90% 55%)`;
+                              return (
+                                <div
+                                  key={a}
+                                  onClick={() => enterFocus(a)}
                                   style={{
                                     display: "flex",
                                     alignItems: "center",
-                                    justifyContent: "center",
-                                    width: 17,
-                                    height: 17,
-                                    borderRadius: "50%",
-                                    border: "none",
-                                    background: "rgba(255, 255, 255, 0.15)",
-                                    color: "rgba(255, 255, 255, 0.7)",
-                                    fontSize: 10,
-                                    fontWeight: 900,
+                                    gap: "9px",
+                                    padding: "6px 14px",
+                                    background: "#181d24",
+                                    border: "1px solid rgba(255, 255, 255, 0.12)",
+                                    borderRadius: "18px",
                                     cursor: "pointer",
-                                    transition: "all 0.15s ease",
-                                    padding: 0,
-                                    marginLeft: 4
+                                    userSelect: "none",
+                                    transition: "all 0.22s ease-out",
+                                    boxShadow: "0 2px 5px rgba(0,0,0,0.25)"
                                   }}
                                   onMouseEnter={(e) => {
-                                    e.stopPropagation();
-                                    e.currentTarget.style.background = "rgba(255, 59, 48, 0.25)";
-                                    e.currentTarget.style.color = "#ff3b30";
+                                    e.currentTarget.style.borderColor = "rgba(255, 255, 255, 0.35)";
+                                    e.currentTarget.style.background = "#202730";
+                                    e.currentTarget.style.boxShadow = `0 0 10px ${dotCol}25, 0 2px 5px rgba(0,0,0,0.25)`;
                                   }}
                                   onMouseLeave={(e) => {
-                                    e.currentTarget.style.background = "rgba(255, 255, 255, 0.15)";
-                                    e.currentTarget.style.color = "rgba(255, 255, 255, 0.7)";
+                                    e.currentTarget.style.borderColor = "rgba(255, 255, 255, 0.12)";
+                                    e.currentTarget.style.background = "#181d24";
+                                    e.currentTarget.style.boxShadow = "0 2px 5px rgba(0,0,0,0.25)";
                                   }}
                                 >
-                                  ✕
-                                </button>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      ) : (
-                        <div style={{ fontSize: 12, color: T.faint, marginBottom: 14 }}>尚未調整任何軸。</div>
-                      )}
-                      <MiniBtn onClick={() => upd("axes", DEF_AXES())} disabled={mOff}>全部歸零</MiniBtn>
-                    </>
+                                  {/* 左側色彩指示點 */}
+                                  <span style={{ width: 9, height: 9, borderRadius: "50%", background: dotCol, boxShadow: `0 0 7px ${dotCol}` }} />
+                                  
+                                  {/* 中間文字 (全稱 + 數值) */}
+                                  <span style={{ fontSize: 14, fontWeight: 700, color: "#fff", fontFamily: fUI }}>
+                                    {FULL_NAME[a]}
+                                  </span>
+                                  <span style={{ fontSize: 12, color: "rgba(255,255,255,0.48)", fontFamily: fMono }}>
+                                    H{st.axes[a].hue >= 0 ? "+" : ""}{st.axes[a].hue} S{st.axes[a].sat >= 0 ? "+" : ""}{st.axes[a].sat}
+                                  </span>
+
+                                  {/* 右側重設 ✕ 按鈕 */}
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      if (mOff) return;
+                                      updAxis(a, "hue", 0);
+                                      updAxis(a, "sat", 0);
+                                    }}
+                                    title="將此軸歸零"
+                                    style={{
+                                      display: "flex",
+                                      alignItems: "center",
+                                      justifyContent: "center",
+                                      width: 17,
+                                      height: 17,
+                                      borderRadius: "50%",
+                                      border: "none",
+                                      background: "rgba(255, 255, 255, 0.15)",
+                                      color: "rgba(255, 255, 255, 0.7)",
+                                      fontSize: 10,
+                                      fontWeight: 900,
+                                      cursor: "pointer",
+                                      transition: "all 0.15s ease",
+                                      padding: 0,
+                                      marginLeft: 4
+                                    }}
+                                    onMouseEnter={(e) => {
+                                      e.stopPropagation();
+                                      e.currentTarget.style.background = "rgba(255, 59, 48, 0.25)";
+                                      e.currentTarget.style.color = "#ff3b30";
+                                    }}
+                                    onMouseLeave={(e) => {
+                                      e.currentTarget.style.background = "rgba(255, 255, 255, 0.15)";
+                                      e.currentTarget.style.color = "rgba(255, 255, 255, 0.7)";
+                                    }}
+                                  >
+                                    ✕
+                                  </button>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        ) : (
+                          <div style={{ fontSize: 12, color: T.faint }}>尚未調整任何軸。</div>
+                        )}
+                      </div>
+                      <div style={{ display: "flex", flexShrink: 0 }}>
+                        <MiniBtn onClick={() => upd("axes", DEF_AXES())} disabled={mOff}>全部歸零</MiniBtn>
+                      </div>
+                    </div>
                   )}
                 </div>
               </div>
