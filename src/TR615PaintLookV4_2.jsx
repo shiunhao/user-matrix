@@ -1675,6 +1675,11 @@ export default function App() {
         <div id="aver-control-params-matrix">
           <BlockHeader 
             title="Matrix · User Matrix" 
+            right={
+              <div style={{ width: 80 }}>
+                <MiniBtn onClick={() => { if (!mOff) MATRIX_KEYS.forEach(([k]) => upd(k, 0)); }} disabled={mOff}>default</MiniBtn>
+              </div>
+            }
           />
           <div>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", columnGap: 26 }}>
