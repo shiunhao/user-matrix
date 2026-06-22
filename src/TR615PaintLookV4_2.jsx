@@ -2930,10 +2930,13 @@ export default function App() {
               const secTitle = { fontSize: 12, color: T.faint, fontWeight: 600, marginBottom: 8 };
               return (
                 <>
-                  {/* 預覽畫面:固定 16:9,寬度變小時整體等比縮小 */}
-                  <div style={{ position: "relative", borderRadius: 10, overflow: "hidden", border: `1px solid ${T.line}`, width: "100%", maxWidth: "min(880px, calc((100vh - 460px) * 1.777))", aspectRatio: "16 / 9", maxHeight: "100%", background: "linear-gradient(160deg,#11151b,#05070a)", flexShrink: 0, margin: "0 auto" }}>
-                    <div style={{ position: "absolute", inset: 0, backgroundImage: "url(meeting_room.png)", backgroundSize: "cover", backgroundPosition: "center" }} />
-                    <span style={{ position: "absolute", left: 12, top: 10, fontFamily: fMono, fontSize: 14, color: "rgba(255,255,255,.9)", textShadow: "0 1px 2px #000", fontWeight: 600, zIndex: 10 }}>● LIVE(模擬畫面)</span>
+                  {/* 預覽畫面外層 container: 填滿剩餘高度與寬度 */}
+                  <div style={{ position: "relative", borderRadius: 10, overflow: "hidden", border: `1px solid ${T.line}`, width: "100%", flex: 1, minHeight: 0, background: "#000", display: "flex", alignItems: "center", justifyContent: "center", boxSizing: "border-box" }}>
+                    {/* 內層 16:9 預覽區：最大化維持 16:9 比例 */}
+                    <div style={{ position: "relative", width: "100%", height: "100%", maxWidth: "100%", maxHeight: "100%", aspectRatio: "16 / 9", overflow: "hidden" }}>
+                      <div style={{ position: "absolute", inset: 0, backgroundImage: "url(meeting_room.png)", backgroundSize: "cover", backgroundPosition: "center" }} />
+                      <span style={{ position: "absolute", left: 12, top: 10, fontFamily: fMono, fontSize: 14, color: "rgba(255,255,255,.9)", textShadow: "0 1px 2px #000", fontWeight: 600, zIndex: 10 }}>● LIVE(模擬畫面)</span>
+                    </div>
                   </div>
 
                   {/* 控制面板 */}
@@ -3060,22 +3063,25 @@ export default function App() {
               const colStyle = { flex: 1, minWidth: 0, display: "flex", flexDirection: "column" };
               return (
                 <>
-                  {/* 預覽畫面:固定 16:9,寬度變小時整體等比縮小 */}
-                  <div style={{ position: "relative", borderRadius: 10, overflow: "hidden", border: `1px solid ${T.line}`, width: "100%", maxWidth: "min(880px, calc((100vh - 460px) * 1.777))", aspectRatio: "16 / 9", maxHeight: "100%", background: "linear-gradient(160deg,#11151b,#05070a)", flexShrink: 0, margin: "0 auto" }}>
-                    <div
-                      style={{
-                        position: "absolute",
-                        inset: 0,
-                        backgroundImage: "url(meeting_room.png)",
-                        backgroundSize: "cover",
-                        backgroundPosition: "center",
-                        filter: previewFilter,
-                        transform: `${cam.mirror ? "scaleX(-1)" : ""} ${cam.flip ? "scaleY(-1)" : ""}`,
-                        transition: "filter .2s ease"
-                      }}
-                    />
-                    <span style={{ position: "absolute", left: 12, top: 10, fontFamily: fMono, fontSize: 13, color: "rgba(255,255,255,.9)", textShadow: "0 1px 2px #000", fontWeight: 600, zIndex: 10 }}>● LIVE(模擬畫面)</span>
-                    <span style={{ position: "absolute", right: 12, top: 10, fontFamily: fMono, fontSize: 12, color: "rgba(255,255,255,.65)", textShadow: "0 1px 2px #000", zIndex: 10 }}>{EXP_MODES.find(([id]) => id === cam.expMode)[1]}</span>
+                  {/* 預覽畫面外層 container: 填滿剩餘高度與寬度 */}
+                  <div style={{ position: "relative", borderRadius: 10, overflow: "hidden", border: `1px solid ${T.line}`, width: "100%", flex: 1, minHeight: 0, background: "#000", display: "flex", alignItems: "center", justifyContent: "center", boxSizing: "border-box" }}>
+                    {/* 內層 16:9 預覽區：最大化維持 16:9 比例 */}
+                    <div style={{ position: "relative", width: "100%", height: "100%", maxWidth: "100%", maxHeight: "100%", aspectRatio: "16 / 9", overflow: "hidden" }}>
+                      <div
+                        style={{
+                          position: "absolute",
+                          inset: 0,
+                          backgroundImage: "url(meeting_room.png)",
+                          backgroundSize: "cover",
+                          backgroundPosition: "center",
+                          filter: previewFilter,
+                          transform: `${cam.mirror ? "scaleX(-1)" : ""} ${cam.flip ? "scaleY(-1)" : ""}`,
+                          transition: "filter .2s ease"
+                        }}
+                      />
+                      <span style={{ position: "absolute", left: 12, top: 10, fontFamily: fMono, fontSize: 13, color: "rgba(255,255,255,.9)", textShadow: "0 1px 2px #000", fontWeight: 600, zIndex: 10 }}>● LIVE(模擬畫面)</span>
+                      <span style={{ position: "absolute", right: 12, top: 10, fontFamily: fMono, fontSize: 12, color: "rgba(255,255,255,.65)", textShadow: "0 1px 2px #000", zIndex: 10 }}>{EXP_MODES.find(([id]) => id === cam.expMode)[1]}</span>
+                    </div>
                   </div>
 
                   {/* 控制面板 */}
