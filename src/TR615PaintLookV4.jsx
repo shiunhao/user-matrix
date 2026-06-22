@@ -1,11 +1,11 @@
 /* ============================================================================
- * AVer TR615 — Paint/Look WEB UI 原型  (V3)
+ * AVer TR615 — Camera & Paint/Look WEB UI 原型  (V4)
  * ----------------------------------------------------------------------------
  * 用途:Pro AV PTZ 攝影機 TR615 之 WEB UI「Paint/Look」色彩調校介面原型。
  *       此為 UX/UI 設計原型 (React 單檔),非最終工程交付。色彩運算為前端 JS 模擬,
  *       實機由韌體 DSP 處理;原型的示波器/畫面僅供互動展示。
  *
- * 【V3 主要設計決策與變更摘要】(供接手者快速理解)
+ * 【V4 主要設計決策與變更摘要】(供接手者快速理解)
  *  1. Scene File(場景檔):
  *     - 升級為「場景庫」:原廠 Standard 卡(不可刪/不佔額度)+ 使用者自訂場景(名稱/備註/縮圖,上限16)。
  *     - 與 Live View 整合為 filmstrip;場景條為「純取用層」(載入/編輯/刪除),
@@ -377,6 +377,80 @@ function Slider({ k, label, hint, min, max, val, onChange, neutral = 0, onStartD
         <span style={{ fontFamily: fMono, fontSize: 14, color: T.faint, width: 24 }}>{max}</span>
       </div>
     </div>
+  );
+}
+
+// ===== Camera Settings 常數 =====
+// 快門速度清單 (慢→快),index 對映滑桿
+const SHUTTER_LIST = ["1/1", "1/2", "1/4", "1/8", "1/15", "1/30", "1/60", "1/100", "1/125", "1/250", "1/500", "1/1000", "1/2000", "1/4000", "1/10000"];
+// 光圈清單 (關閉→最大),index 對映滑桿;左端標 0、右端標 F1.6
+const IRIS_LIST = ["Close", "F14", "F11", "F9.6", "F8", "F6.8", "F5.6", "F4.8", "F4", "F3.4", "F2.8", "F2.4", "F2", "F1.8", "F1.6"];
+const EXP_MODES = [
+  ["auto", "Full Auto"],
+  ["iris", "Iris Priority"],
+  ["shutter", "Shutter Priority"],
+  ["manual", "Manual"],
+  ["bright", "Bright"],
+];
+// 各曝光模式下,哪些控制項可調 (1) / 變灰禁用 (0)
+const EXP_ENABLED = {
+  auto:    { ev: 1, shutter: 0, iris: 0, gain: 0, gainLimit: 1, blc: 1, slow: 1, wdr: 1, bright: 0 },
+  iris:    { ev: 1, shutter: 0, iris: 1, gain: 0, gainLimit: 1, blc: 1, slow: 1, wdr: 1, bright: 0 },
+  shutter: { ev: 1, shutter: 1, iris: 0, gain: 0, gainLimit: 1, blc: 1, slow: 0, wdr: 1, bright: 0 },
+  manual:  { ev: 0, shutter: 1, iris: 1, gain: 1, gainLimit: 0, blc: 1, slow: 0, wdr: 1, bright: 0 },
+  bright:  { ev: 0, shutter: 0, iris: 0, gain: 0, gainLimit: 0, blc: 1, slow: 1, wdr: 1, bright: 1 },
+};
+const CAM_DEFAULTS = {
+  tab: "exp", expMode: "auto",
+  ev: 0, shutterIdx: 6, irisIdx: 11, gain: 24, gainLimit: 24, blc: 0, ndFilter: "clear",
+  slowShutter: false, wdr: false, brightVal: 25,
+  saturation: 5, sharpness: 2, contrast: 2,
+  wbMode: "auto", rGain: 59, bGain: 102,
+  noiseFilter: "off", mirror: false, flip: false, ldc: false,
+};
+
+// 曝光/影像處理用滑桿:支援字串端點標籤與字串數值顯示
+function ExpSlider({ label, leftLabel, rightLabel, valueText, min, max, val, onChange, disabled, accent }) {
+  const ac = accent || T.blue;
+  return (
+    <div style={{ marginBottom: 15, opacity: disabled ? 0.4 : 1 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 6 }}>
+        <span style={{ fontSize: 13, color: T.text }}>{label}</span>
+        <span style={{ fontFamily: fMono, fontSize: 13, color: disabled ? T.faint : ac }}>{valueText}</span>
+      </div>
+      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        <span style={{ fontFamily: fMono, fontSize: 11, color: T.faint, minWidth: 26, textAlign: "right" }}>{leftLabel}</span>
+        <input type="range" min={min} max={max} value={val} disabled={disabled}
+          onChange={(e) => onChange(parseInt(e.target.value))} className="tr-sl"
+          style={{ "--p": ((val - min) / (max - min)) * 100 + "%", cursor: disabled ? "not-allowed" : "pointer", flex: 1 }} />
+        <span style={{ fontFamily: fMono, fontSize: 11, color: T.faint, minWidth: 38 }}>{rightLabel}</span>
+      </div>
+    </div>
+  );
+}
+
+// 方塊勾選框 (Slow Shutter / WDR / Mirror / Flip)
+function CamCheck({ label, checked, onChange, disabled }) {
+  return (
+    <div onClick={() => { if (!disabled) onChange(!checked); }}
+      style={{ display: "flex", alignItems: "center", gap: 10, padding: "9px 12px", borderRadius: 6, border: `1px solid ${T.line}`, background: T.panel2, cursor: disabled ? "default" : "pointer", opacity: disabled ? 0.4 : 1, marginBottom: 10, userSelect: "none" }}>
+      <span style={{ width: 16, height: 16, borderRadius: 3, border: `1.5px solid ${checked ? T.blue : T.line2}`, background: checked ? T.blue : "transparent", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+        {checked && <span style={{ color: "#fff", fontSize: 11, fontWeight: 700, lineHeight: 1 }}>✓</span>}
+      </span>
+      <span style={{ fontSize: 13, color: T.text }}>{label}</span>
+    </div>
+  );
+}
+
+// 單選 (Tracking Control 用)
+function CamRadio({ label, checked, onChange }) {
+  return (
+    <label onClick={onChange} style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer", fontSize: 13, color: checked ? T.text : T.dim, userSelect: "none" }}>
+      <span style={{ width: 13, height: 13, borderRadius: "50%", border: `1.5px solid ${checked ? T.blue : T.line2}`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+        {checked && <span style={{ width: 6, height: 6, borderRadius: "50%", background: T.blue }} />}
+      </span>
+      {label}
+    </label>
   );
 }
 
@@ -935,6 +1009,13 @@ export default function App() {
 
   // 選單頁面狀態："paint" (Paint / Look), "video" (Video & Audio)
   const [activeMenu, setActiveMenu] = useState("paint");
+  // Camera Settings 頁狀態
+  const [cam, setCam] = useState(CAM_DEFAULTS);
+  const updCam = (k, v) => setCam((c) => ({ ...c, [k]: v }));
+  // Tracking Control (側邊欄)
+  const [trackOn, setTrackOn] = useState(true);
+  const [trackMode, setTrackMode] = useState("hybrid");
+  const [trkFace, setTrkFace] = useState(false);
 
   // Multi-Matrix 樣式狀態："wheel" (雷達色環), "eq" (色彩等化器)
 
@@ -1785,7 +1866,7 @@ export default function App() {
                 style={{ width: "100%", display: "flex", flexDirection: "column", alignItems: "center", gap: 12, padding: "4px 8px 6px" }}
               >
                 {/* 1. 上方長方形漸變色相圖與色彩節點 */}
-                <div style={{ width: 820, display: "flex", flexDirection: "column", alignItems: "center", gap: 6, position: "relative", margin: "0 auto" }}>
+                <div style={{ width: "100%", maxWidth: 820, display: "flex", flexDirection: "column", alignItems: "center", gap: 6, position: "relative", margin: "0 auto" }}>
                   <div style={{ fontSize: 13, color: T.dim, alignSelf: "flex-start", marginBottom: 2 }}>
                     點擊橫條上的色彩節點或色條區域解鎖對應的調整元件：
                   </div>
@@ -1795,23 +1876,13 @@ export default function App() {
                     onClick={(e) => {
                       if (mOff) return;
                       const rect = e.currentTarget.getBoundingClientRect();
-                      const clickX = e.clientX - rect.left;
-                      // 與下方卡片中心點完美垂直對齊的 6 個位置
-                      const positions = [62.5, 201.5, 340.5, 479.5, 618.5, 757.5];
-                      let minIdx = 0;
-                      let minDistance = Math.abs(clickX - positions[0]);
-                      for (let idx = 1; idx < positions.length; idx++) {
-                        const dist = Math.abs(clickX - positions[idx]);
-                        if (dist < minDistance) {
-                          minDistance = dist;
-                          minIdx = idx;
-                        }
-                      }
-                      setSelAxis(AXIS16[minIdx]);
+                      const frac = (e.clientX - rect.left) / rect.width;
+                      const idx = Math.min(AXIS16.length - 1, Math.max(0, Math.round(frac * AXIS16.length - 0.5)));
+                      setSelAxis(AXIS16[idx]);
                     }}
                     style={{ 
                       position: "relative", 
-                      width: 820, 
+                      width: "100%", 
                       height: 24, 
                       display: "flex", 
                       alignItems: "center", 
@@ -1821,12 +1892,12 @@ export default function App() {
                       cursor: mOff ? "default" : "pointer"
                     }}
                   >
-                    {/* 背景漸變條 */}
+                    {/* 背景漸變條 — 色標精準落在各節點(=卡片中心)位置,使節點顏色與條色一致 */}
                     <div style={{ 
                       width: "100%", 
                       height: 12, 
                       borderRadius: 6, 
-                      background: "linear-gradient(to right, hsl(0, 85%, 58%), hsl(60, 85%, 55%), hsl(120, 70%, 50%), hsl(180, 75%, 52%), hsl(240, 85%, 62%), hsl(300, 85%, 60%), hsl(360, 85%, 58%))",
+                      background: `linear-gradient(to right, ${AXIS16.map((a, i) => { const [r, g, b] = hsv2rgb(angUI[a], 0.9, 0.95); return `rgb(${Math.round(r * 255)},${Math.round(g * 255)},${Math.round(b * 255)}) calc((100% - 70px) / 6 * ${i + 0.5} + ${14 * i}px)`; }).join(", ")})`,
                       boxShadow: "inset 0 1px 3px rgba(0,0,0,0.5)"
                     }} />
                     
@@ -1838,8 +1909,8 @@ export default function App() {
                       const [r, g, b] = hsv2rgb(ang, 0.9, 0.95);
                       const col = `rgb(${r * 255},${g * 255},${b * 255})`;
                       
-                      // 與下方卡片中心點完美垂直對齊的位置 (i * (卡寬125 + gap14) + 卡寬/2)
-                      const leftPos = i * 139 + 62.5;
+                      // 與下方等分卡片中心對齊(響應式):卡寬=(100%-5*gap)/6,gap=14
+                      const leftPos = `calc((100% - 70px) / 6 * ${i + 0.5} + ${14 * i}px)`;
                       
                       const handleNodeClick = (e) => {
                         e.stopPropagation();
@@ -1907,7 +1978,8 @@ export default function App() {
                     return (
                       <div key={a}
                         style={{
-                          flex: "0 0 125px",
+                          flex: "1 1 0",
+                          minWidth: 0,
                           background: T.panel2,
                           border: `1.5px solid ${isSel ? col : touched ? T.amber : T.line2}`,
                           borderRadius: 8, overflow: "hidden", display: "flex", flexDirection: "column",
@@ -2340,11 +2412,11 @@ export default function App() {
       `}</style>
 
       {/* 側邊導覽欄 (AVer WebUI Sidebar Template) */}
-      <div id="aver-sidebar-container" style={{ width: 220, background: T.side, flexShrink: 0, paddingTop: 20, display: "flex", flexDirection: "column", height: "100vh", boxSizing: "border-box" }}>
+      <div id="aver-sidebar-container" style={{ width: 220, background: T.side, flexShrink: 0, paddingTop: 20, display: "flex", flexDirection: "column", height: "100vh", boxSizing: "border-box", overflowY: "auto" }}>
         <div style={{ padding: "4px 24px 20px", fontWeight: 700, fontSize: 22, fontStyle: "italic", letterSpacing: 0.5, color: "#fff" }}>AVer</div>
         {[
           ["Live View", "live", false], 
-          ["Camera Settings", "camera", false], 
+          ["Camera Settings", "camera", true], 
           ["Paint / Look", "paint", true], 
           ["Video & Audio", "video", true], 
           ["Network", "network", false], 
@@ -2372,8 +2444,34 @@ export default function App() {
             </div>
           );
         })}
+        {activeMenu === "camera" && (
+          <div className="aver-fade" style={{ margin: "8px 0 0", padding: "12px 18px 16px", borderTop: `1px solid ${T.line}`, display: "flex", flexDirection: "column", gap: 12 }}>
+            <div style={{ fontSize: 12, letterSpacing: 1, color: T.faint, fontWeight: 600, textTransform: "uppercase" }}>Tracking Control</div>
+            <div style={{ display: "flex", alignItems: "center", gap: 18 }}>
+              <span style={{ fontSize: 13, color: T.dim, width: 56 }}>Tracking</span>
+              <CamRadio label="On" checked={trackOn} onChange={() => setTrackOn(true)} />
+              <CamRadio label="Off" checked={!trackOn} onChange={() => setTrackOn(false)} />
+            </div>
+            <div style={{ display: "flex", gap: 8 }}>
+              <span style={{ fontSize: 13, color: T.dim, width: 56, flexShrink: 0, paddingTop: 2 }}>Mode</span>
+              <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
+                {[["presenter", "Presenter"], ["zone", "Zone"], ["hybrid", "Hybrid"], ["framing", "Framing"]].map(([id, lb]) => (
+                  <CamRadio key={id} label={lb} checked={trackMode === id} onChange={() => setTrackMode(id)} />
+                ))}
+              </div>
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: 18 }}>
+              <span style={{ fontSize: 13, color: T.dim, width: 56 }}>TrkFace</span>
+              <CamRadio label="On" checked={trkFace} onChange={() => setTrkFace(true)} />
+              <CamRadio label="Off" checked={!trkFace} onChange={() => setTrkFace(false)} />
+            </div>
+            <button style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8, padding: "9px 0", fontSize: 13, cursor: "pointer", borderRadius: 6, border: `1px solid ${T.line2}`, background: T.panel2, color: T.text, fontFamily: fUI, marginTop: 2 }}>
+              ⊕ Click Track
+            </button>
+          </div>
+        )}
         <div style={{ margin: "auto 16px 20px", padding: "12px 14px", borderRadius: 8, background: "rgba(30,155,240,0.06)", border: `1px solid ${T.line}`, fontSize: 14, color: T.faint, lineHeight: 1.6 }}>
-          原型示意: 點擊選單切換 Video & Audio 與 Paint / Look。
+          原型示意: 點擊選單切換 Camera Settings、Video & Audio 與 Paint / Look。
         </div>
       </div>
 
@@ -2680,6 +2778,175 @@ export default function App() {
 
           </div>
         </div>
+        ) : activeMenu === "camera" ? (
+          <div id="aver-camera-settings-wrapper" key="camera" className="aver-fade" style={{ display: "flex", flexDirection: "column", gap: 12, width: "100%", maxWidth: "1350px", margin: "0 auto", height: "100%", minHeight: 0 }}>
+            {(() => {
+              const en = EXP_ENABLED[cam.expMode];
+              const ndMul = { clear: 1, nd4: 0.72, nd16: 0.5, nd128: 0.32 }[cam.ndFilter] ?? 1;
+              const evB = (cam.expMode === "bright" ? (cam.brightVal / 31) * 1.1 + 0.45
+                : cam.expMode === "manual" ? (cam.gain / 42) * 1.0 + 0.55
+                : 1 + cam.ev * 0.13) * ndMul;
+              const previewFilter = `brightness(${evB.toFixed(2)}) contrast(${(0.7 + cam.contrast / 4 * 0.6).toFixed(2)}) saturate(${(cam.saturation / 5).toFixed(2)})`;
+              const colStyle = { flex: 1, minWidth: 0, display: "flex", flexDirection: "column" };
+              return (
+                <>
+                  {/* 預覽畫面 */}
+                  <div style={{ position: "relative", borderRadius: 10, overflow: "hidden", border: `1px solid ${T.line}`, flex: "1 1 0", minHeight: 160, background: "linear-gradient(160deg,#11151b,#05070a)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                    <img 
+                      src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxNiA5Ii8+"
+                      style={{ 
+                        width: "auto", 
+                        height: "auto", 
+                        maxWidth: "100%",
+                        maxHeight: "100%",
+                        objectFit: "contain", 
+                        backgroundImage: "url(meeting_room.png)", 
+                        backgroundSize: "cover", 
+                        backgroundPosition: "center", 
+                        filter: previewFilter, 
+                        transform: `${cam.mirror ? "scaleX(-1)" : ""} ${cam.flip ? "scaleY(-1)" : ""}`, 
+                        transition: "filter .2s ease",
+                        display: "block"
+                      }} 
+                    />
+                    <span style={{ position: "absolute", left: 12, top: 10, fontFamily: fMono, fontSize: 13, color: "rgba(255,255,255,.9)", textShadow: "0 1px 2px #000", fontWeight: 600, zIndex: 10 }}>● LIVE(模擬畫面)</span>
+                    <span style={{ position: "absolute", right: 12, top: 10, fontFamily: fMono, fontSize: 12, color: "rgba(255,255,255,.65)", textShadow: "0 1px 2px #000", zIndex: 10 }}>{EXP_MODES.find(([id]) => id === cam.expMode)[1]}</span>
+                  </div>
+
+                  {/* 控制面板 */}
+                  <div style={{ background: T.panel, border: `1px solid ${T.line}`, borderRadius: 10, flex: "0 0 auto", display: "flex", flexDirection: "column", overflow: "hidden" }}>
+                    {/* 分頁列 */}
+                    <div style={{ display: "flex", borderBottom: `1px solid ${T.line}` }}>
+                      {[["exp", "Exposure"], ["img", "Image Process"]].map(([id, lb]) => (
+                        <button key={id} onClick={() => updCam("tab", id)}
+                          style={{ flex: "0 0 200px", padding: "11px 0", fontSize: 14, fontWeight: 600, cursor: "pointer", border: "none", background: cam.tab === id ? T.blue : "transparent", color: cam.tab === id ? "#fff" : T.dim, fontFamily: fUI }}>
+                          {lb}
+                        </button>
+                      ))}
+                    </div>
+
+                    {cam.tab === "exp" ? (
+                      /* ===== Exposure 分頁 ===== */
+                      <div style={{ display: "flex", gap: 0, padding: "16px 0", alignItems: "stretch", minHeight: 280, boxSizing: "border-box" }}>
+                        {/* 模式清單 */}
+                        <div style={{ flex: "0 0 150px", display: "flex", flexDirection: "column", gap: 4, padding: "0 16px", borderRight: `1px solid ${T.line}` }}>
+                          {EXP_MODES.map(([id, lb]) => (
+                            <button key={id} onClick={() => updCam("expMode", id)}
+                              style={{ padding: "9px 12px", fontSize: 13, textAlign: "left", cursor: "pointer", borderRadius: 6, border: "none", background: cam.expMode === id ? T.blue : T.panel2, color: cam.expMode === id ? "#fff" : T.dim, fontWeight: cam.expMode === id ? 600 : 400, fontFamily: fUI }}>
+                              {lb}
+                            </button>
+                          ))}
+                        </div>
+                        {/* 欄 A */}
+                        <div style={{ ...colStyle, padding: "0 18px" }}>
+                          <div style={{ marginBottom: 15 }}>
+                            <div style={{ fontSize: 13, color: T.text, marginBottom: 6 }}>ND Filter</div>
+                            <select value={cam.ndFilter} onChange={(e) => updCam("ndFilter", e.target.value)}
+                              style={{ width: "100%", padding: "8px 10px", fontSize: 13, borderRadius: 6, border: `1px solid ${T.line2}`, background: T.panel2, color: T.text, fontFamily: fUI, cursor: "pointer" }}>
+                              <option value="nd128">ND 1/128</option>
+                              <option value="nd16">ND 1/16</option>
+                              <option value="nd4">ND 1/4</option>
+                              <option value="clear">ND Clear</option>
+                            </select>
+                          </div>
+                          <ExpSlider label="Exposure Value" leftLabel="-4" rightLabel="4" valueText={cam.ev > 0 ? "+" + cam.ev : "" + cam.ev} min={-4} max={4} val={cam.ev} onChange={(v) => updCam("ev", v)} disabled={!en.ev} />
+                          <ExpSlider label="Shutter Speed" leftLabel="1/1" rightLabel="1/10K" valueText={SHUTTER_LIST[cam.shutterIdx]} min={0} max={SHUTTER_LIST.length - 1} val={cam.shutterIdx} onChange={(v) => updCam("shutterIdx", v)} disabled={!en.shutter} />
+                          <ExpSlider label="Iris Level" leftLabel="0" rightLabel="F1.6" valueText={IRIS_LIST[cam.irisIdx]} min={0} max={IRIS_LIST.length - 1} val={cam.irisIdx} onChange={(v) => updCam("irisIdx", v)} disabled={!en.iris} />
+                        </div>
+                        {/* 欄 B */}
+                        <div style={{ ...colStyle, padding: "0 18px" }}>
+                          <ExpSlider label="Gain Level" leftLabel="0" rightLabel="42" valueText={cam.gain + "dB"} min={0} max={42} val={cam.gain} onChange={(v) => updCam("gain", v)} disabled={!en.gain} />
+                          <ExpSlider label="Gain Limit Level" leftLabel="24" rightLabel="42" valueText={cam.gainLimit + "dB"} min={24} max={42} val={cam.gainLimit} onChange={(v) => updCam("gainLimit", v)} disabled={!en.gainLimit} />
+                          <ExpSlider label="BLC" leftLabel="Off" rightLabel="On" valueText={cam.blc ? "On" : "Off"} min={0} max={1} val={cam.blc} onChange={(v) => updCam("blc", v)} disabled={!en.blc} accent={T.amber} />
+                        </div>
+                        {/* 欄 C */}
+                        <div style={{ ...colStyle, padding: "0 18px", justifyContent: "space-between" }}>
+                          <div>
+                            <CamCheck label="Slow Shutter" checked={cam.slowShutter} onChange={(v) => updCam("slowShutter", v)} disabled={!en.slow} />
+                            <CamCheck label="WDR" checked={cam.wdr} onChange={(v) => updCam("wdr", v)} disabled={!en.wdr} />
+                            <ExpSlider label="Bright Value" leftLabel="0" rightLabel="31" valueText={"" + cam.brightVal} min={0} max={31} val={cam.brightVal} onChange={(v) => updCam("brightVal", v)} disabled={!en.bright} />
+                          </div>
+                          <div style={{ display: "flex", justifyContent: "flex-end" }}>
+                            <button onClick={() => setCam({ ...CAM_DEFAULTS, tab: "exp" })}
+                              style={{ padding: "8px 22px", fontSize: 13, cursor: "pointer", borderRadius: 6, border: `1px solid ${T.line2}`, background: T.panel2, color: T.text, fontFamily: fUI }}>
+                              Default
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    ) : (
+                      /* ===== Image Process 分頁(對照實機) ===== */
+                      <div style={{ display: "flex", gap: 0, padding: "16px 0", minHeight: 280, boxSizing: "border-box" }}>
+                        {/* 第 1 欄:White Balance + R/B Gain + One Push */}
+                        <div style={{ ...colStyle, padding: "0 18px", borderRight: `1px solid ${T.line}` }}>
+                          <div style={{ fontSize: 12, color: T.faint, fontWeight: 600, marginBottom: 8 }}>White Balance</div>
+                          <select value={cam.wbMode} onChange={(e) => updCam("wbMode", e.target.value)}
+                            style={{ width: "100%", padding: "8px 10px", fontSize: 13, borderRadius: 6, border: `1px solid ${T.line2}`, background: T.panel2, color: T.text, fontFamily: fUI, marginBottom: 14, cursor: "pointer" }}>
+                            <option value="auto">AWB</option>
+                            <option value="indoor">Indoor</option>
+                            <option value="outdoor">Outdoor</option>
+                            <option value="onepush">One Push</option>
+                            <option value="manual">Manual</option>
+                          </select>
+                          <div style={{ display: "flex", gap: 16 }}>
+                            <div style={{ flex: 1 }}>
+                              <ExpSlider label="R Gain" leftLabel="0" rightLabel="255" valueText={"" + cam.rGain} min={0} max={255} val={cam.rGain} onChange={(v) => updCam("rGain", v)} disabled={cam.wbMode === "auto"} accent={"#ff6b6b"} />
+                            </div>
+                            <div style={{ flex: 1 }}>
+                              <ExpSlider label="B Gain" leftLabel="0" rightLabel="255" valueText={"" + cam.bGain} min={0} max={255} val={cam.bGain} onChange={(v) => updCam("bGain", v)} disabled={cam.wbMode === "auto"} />
+                            </div>
+                          </div>
+                          <div style={{ fontSize: 12, color: T.faint, fontWeight: 600, marginTop: 4, marginBottom: 8 }}>One Push</div>
+                          <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
+                            <button disabled={cam.wbMode !== "onepush"}
+                              style={{ padding: "9px 22px", fontSize: 13, cursor: cam.wbMode === "onepush" ? "pointer" : "not-allowed", borderRadius: 6, border: `1px solid ${T.line2}`, background: T.panel2, color: cam.wbMode === "onepush" ? T.text : T.faint, fontFamily: fUI, flexShrink: 0 }}>
+                              Set
+                            </button>
+                            <span style={{ fontSize: 11.5, color: T.faint, lineHeight: 1.5 }}>If you select 'One push', please press SET when placing a sheet of white paper to the camera</span>
+                          </div>
+                        </div>
+
+                        {/* 第 2 欄:Saturation / Contrast / Sharpness(實機範圍) */}
+                        <div style={{ ...colStyle, padding: "0 18px", borderRight: `1px solid ${T.line}` }}>
+                          <ExpSlider label="Saturation" leftLabel="0" rightLabel="10" valueText={"" + cam.saturation} min={0} max={10} val={cam.saturation} onChange={(v) => updCam("saturation", v)} />
+                          <ExpSlider label="Contrast" leftLabel="0" rightLabel="4" valueText={"" + cam.contrast} min={0} max={4} val={cam.contrast} onChange={(v) => updCam("contrast", v)} />
+                          <ExpSlider label="Sharpness" leftLabel="0" rightLabel="3" valueText={"" + cam.sharpness} min={0} max={3} val={cam.sharpness} onChange={(v) => updCam("sharpness", v)} />
+                        </div>
+
+                        {/* 第 3 欄:Noise Filter + Mirror/Flip/LDC + Default */}
+                        <div style={{ ...colStyle, padding: "0 18px", justifyContent: "space-between" }}>
+                          <div>
+                            <div style={{ fontSize: 12, color: T.faint, fontWeight: 600, marginBottom: 10 }}>Noise Filter</div>
+                            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 16, gap: 4 }}>
+                              {[["off", "Off"], ["low", "Low"], ["medium", "Medium"], ["high", "High"]].map(([id, lb]) => (
+                                <div key={id} onClick={() => updCam("noiseFilter", id)} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 5, cursor: "pointer", flex: 1 }}>
+                                  <span style={{ width: 15, height: 15, borderRadius: "50%", border: `1.5px solid ${cam.noiseFilter === id ? T.blue : T.line2}`, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                                    {cam.noiseFilter === id && <span style={{ width: 7, height: 7, borderRadius: "50%", background: T.blue }} />}
+                                  </span>
+                                  <span style={{ fontSize: 12, color: cam.noiseFilter === id ? T.text : T.dim }}>{lb}</span>
+                                </div>
+                              ))}
+                            </div>
+                            <div style={{ display: "flex", gap: 12 }}>
+                              <div style={{ flex: 1 }}><CamCheck label="Mirror" checked={cam.mirror} onChange={(v) => updCam("mirror", v)} /></div>
+                              <div style={{ flex: 1 }}><CamCheck label="Flip" checked={cam.flip} onChange={(v) => updCam("flip", v)} /></div>
+                            </div>
+                            <div style={{ width: "calc(50% - 6px)" }}><CamCheck label="LDC" checked={cam.ldc} onChange={(v) => updCam("ldc", v)} /></div>
+                          </div>
+                          <div style={{ display: "flex", justifyContent: "flex-end" }}>
+                            <button onClick={() => setCam({ ...CAM_DEFAULTS, tab: "img" })}
+                              style={{ padding: "8px 22px", fontSize: 13, cursor: "pointer", borderRadius: 6, border: `1px solid ${T.line2}`, background: T.panel2, color: T.text, fontFamily: fUI }}>
+                              Default
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </>
+              );
+            })()}
+          </div>
         ) : (
           <div id="aver-video-audio-wrapper" key="video" className="aver-fade" style={{ display: "flex", flexDirection: "column", gap: 12, width: "100%", maxWidth: "1350px", margin: "0 auto", height: "100%", minHeight: 0, overflow: "hidden" }}>
             

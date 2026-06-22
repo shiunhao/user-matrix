@@ -1,11 +1,11 @@
 /* ============================================================================
- * AVer TR615 — Paint/Look WEB UI 原型  (V3)
+ * AVer TR615 — Camera & Paint/Look WEB UI 原型  (V4.1)
  * ----------------------------------------------------------------------------
  * 用途:Pro AV PTZ 攝影機 TR615 之 WEB UI「Paint/Look」色彩調校介面原型。
  *       此為 UX/UI 設計原型 (React 單檔),非最終工程交付。色彩運算為前端 JS 模擬,
  *       實機由韌體 DSP 處理;原型的示波器/畫面僅供互動展示。
  *
- * 【V3 主要設計決策與變更摘要】(供接手者快速理解)
+ * 【V4.1 主要設計決策與變更摘要】(供接手者快速理解)
  *  1. Scene File(場景檔):
  *     - 升級為「場景庫」:原廠 Standard 卡(不可刪/不佔額度)+ 使用者自訂場景(名稱/備註/縮圖,上限16)。
  *     - 與 Live View 整合為 filmstrip;場景條為「純取用層」(載入/編輯/刪除),
@@ -163,7 +163,7 @@ function applyMulti(R, G, B, axes) {
 function applyTone(R, G, B, p) {
   // Black level 提升暗部基準 (影響全圖，但偏向暗部)
   const bl = p.black / 50 * 0.12;
-  const kneeOn = p.kneeOn && !p.autoKnee;
+  const kneeOn = !p.autoKnee;
   const kp = p.kneePoint / 109, slope = 0.5 + (p.kneeSlope + 5) / 20;
 
   const f = (v) => {
@@ -314,8 +314,8 @@ const BLOCKS = [
 
 // Matrix 六色軸係數鍵值與中文提示
 const MATRIX_KEYS = [
-  ["level", "Level", "整體飽和度"],
-  ["phase", "Phase", "整體色相"],
+  ["level", "Level", ""],
+  ["phase", "Phase", ""],
   ["rg", "R-G", ""],
   ["rb", "R-B", ""],
   ["gr", "G-R", ""],
@@ -380,85 +380,156 @@ function Slider({ k, label, hint, min, max, val, onChange, neutral = 0, onStartD
   );
 }
 
-/**
- * 直立推桿組件 (VFader)
- * 用於推桿台模式，利用 Pointer Events 實現無延遲、絲滑像素級跟手拖曳
- */
-function VFader({ axis, kind, val, fillColor, mOff, updAxis, startDrag, endDrag }) {
-  const FH = 150; // 推桿高度
-  const center = FH / 2;
-  const amp = (val / 99) * (FH * 0.46);
-  const fillTop = amp >= 0 ? center - amp : center;
-  const fillH = Math.abs(amp);
-  const thumbY = center - amp;
-  const faderRef = useRef(null);
-  const dragActive = useRef(false);
+// ===== Camera Settings 常數 =====
+// 快門速度清單 (慢→快),index 對映滑桿
+const SHUTTER_LIST = ["1/1", "1/2", "1/4", "1/8", "1/15", "1/30", "1/60", "1/100", "1/125", "1/250", "1/500", "1/1000", "1/2000", "1/4000", "1/10000"];
+// 光圈清單 (關閉→最大),index 對映滑桿;左端標 0、右端標 F1.6
+const IRIS_LIST = ["Close", "F14", "F11", "F9.6", "F8", "F6.8", "F5.6", "F4.8", "F4", "F3.4", "F2.8", "F2.4", "F2", "F1.8", "F1.6"];
+const EXP_MODES = [
+  ["auto", "Full Auto"],
+  ["iris", "Iris Priority"],
+  ["shutter", "Shutter Priority"],
+  ["manual", "Manual"],
+  ["bright", "Bright"],
+];
+// 各曝光模式下,哪些控制項可調 (1) / 變灰禁用 (0)
+const EXP_ENABLED = {
+  auto:    { ev: 1, shutter: 0, iris: 0, gain: 0, gainLimit: 1, blc: 1, slow: 1, wdr: 1, bright: 0 },
+  iris:    { ev: 1, shutter: 0, iris: 1, gain: 0, gainLimit: 1, blc: 1, slow: 1, wdr: 1, bright: 0 },
+  shutter: { ev: 1, shutter: 1, iris: 0, gain: 0, gainLimit: 1, blc: 1, slow: 0, wdr: 1, bright: 0 },
+  manual:  { ev: 0, shutter: 1, iris: 1, gain: 1, gainLimit: 0, blc: 1, slow: 0, wdr: 1, bright: 0 },
+  bright:  { ev: 0, shutter: 0, iris: 0, gain: 0, gainLimit: 0, blc: 1, slow: 1, wdr: 1, bright: 1 },
+};
+const CAM_DEFAULTS = {
+  tab: "exp", expMode: "auto",
+  ev: 0, shutterIdx: 6, irisIdx: 11, gain: 24, gainLimit: 24, blc: 0, ndFilter: "clear",
+  slowShutter: false, wdr: false, brightVal: 25,
+  saturation: 5, sharpness: 2, contrast: 2,
+  wbMode: "auto", rGain: 59, bGain: 102,
+  noiseFilter: "off", mirror: false, flip: false, ldc: false,
+};
 
-  const handlePointerDown = (e) => {
-    if (mOff) return;
-    e.preventDefault();
-    dragActive.current = true;
-    try {
-      e.currentTarget.setPointerCapture(e.pointerId);
-    } catch (err) {}
-    startDrag();
-    updateVal(e);
-  };
-
-  const handlePointerMove = (e) => {
-    if (!dragActive.current) return;
-    updateVal(e);
-  };
-
-  const handlePointerUp = (e) => {
-    if (!dragActive.current) return;
-    dragActive.current = false;
-    try {
-      e.currentTarget.releasePointerCapture(e.pointerId);
-    } catch (err) {}
-    endDrag();
-  };
-
-  const updateVal = (e) => {
-    if (!faderRef.current) return;
-    const rect = faderRef.current.getBoundingClientRect();
-    const yRel = e.clientY - rect.top; // 相對推桿頂部的 Y 座標
-    const rawVal = ((FH / 2 - yRel) / (FH / 2)) * 99;
-    const cleanVal = Math.max(-99, Math.min(99, Math.round(rawVal)));
-    updAxis(axis, kind, cleanVal);
-  };
-
+// 曝光/影像處理用滑桿:支援字串端點標籤與字串數值顯示
+function ExpSlider({ label, leftLabel, rightLabel, valueText, min, max, val, onChange, disabled, accent }) {
+  const ac = accent || T.blue;
   return (
-    <div 
-      ref={faderRef}
-      onPointerDown={handlePointerDown}
-      onPointerMove={handlePointerMove}
-      onPointerUp={handlePointerUp}
-      style={{ 
-        position: "relative", 
-        width: 22, 
-        height: FH, 
-        cursor: mOff ? "not-allowed" : "ns-resize",
-        touchAction: "none"
-      }}
-    >
-      {/* 背景軌道 */}
-      <div style={{ position: "absolute", left: "50%", top: 0, transform: "translateX(-50%)", width: 7, height: "100%", borderRadius: 4, background: "#0a0c0e", boxShadow: "inset 0 0 4px rgba(0,0,0,0.8)" }} />
-      
-      {/* 中線刻度 */}
-      <div style={{ position: "absolute", left: 1, right: 1, top: center, height: 1, background: "rgba(255,255,255,0.18)" }} />
-      
-      {/* 彩色填充條 */}
-      <div style={{ position: "absolute", left: "50%", transform: "translateX(-50%)", top: fillTop, width: 7, height: fillH, borderRadius: 4,
-        background: fillColor, opacity: amp >= 0 ? 0.95 : 0.4, boxShadow: val !== 0 ? `0 0 7px ${fillColor}` : "none" }} />
-      
-      {/* 白色推桿把手 */}
-      <div style={{ position: "absolute", left: "50%", top: thumbY, transform: "translate(-50%,-50%)", width: 20, height: 8, borderRadius: 3,
-        background: "#fff", boxShadow: `0 1px 4px rgba(0,0,0,0.7), 0 0 6px ${val !== 0 ? fillColor : "transparent"}`, pointerEvents: "none", zIndex: 3 }} />
+    <div style={{ marginBottom: 15, opacity: disabled ? 0.4 : 1 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 6 }}>
+        <span style={{ fontSize: 13, color: T.text }}>{label}</span>
+        <span style={{ fontFamily: fMono, fontSize: 13, color: disabled ? T.faint : ac }}>{valueText}</span>
+      </div>
+      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        <span style={{ fontFamily: fMono, fontSize: 11, color: T.faint, minWidth: 26, textAlign: "right" }}>{leftLabel}</span>
+        <input type="range" min={min} max={max} value={val} disabled={disabled}
+          onChange={(e) => onChange(parseInt(e.target.value))} className="tr-sl"
+          style={{ "--p": ((val - min) / (max - min)) * 100 + "%", cursor: disabled ? "not-allowed" : "pointer", flex: 1 }} />
+        <span style={{ fontFamily: fMono, fontSize: 11, color: T.faint, minWidth: 38 }}>{rightLabel}</span>
+      </div>
     </div>
   );
 }
 
+// 方塊勾選框 (Slow Shutter / WDR / Mirror / Flip)
+function CamCheck({ label, checked, onChange, disabled }) {
+  return (
+    <div onClick={() => { if (!disabled) onChange(!checked); }}
+      style={{ display: "flex", alignItems: "center", gap: 10, padding: "9px 12px", borderRadius: 6, border: `1px solid ${T.line}`, background: T.panel2, cursor: disabled ? "default" : "pointer", opacity: disabled ? 0.4 : 1, marginBottom: 10, userSelect: "none" }}>
+      <span style={{ width: 16, height: 16, borderRadius: 3, border: `1.5px solid ${checked ? T.blue : T.line2}`, background: checked ? T.blue : "transparent", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+        {checked && <span style={{ color: "#fff", fontSize: 11, fontWeight: 700, lineHeight: 1 }}>✓</span>}
+      </span>
+      <span style={{ fontSize: 13, color: T.text }}>{label}</span>
+    </div>
+  );
+}
+
+// 單選 (Tracking Control 用)
+function CamRadio({ label, checked, onChange }) {
+  return (
+    <label onClick={onChange} style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer", fontSize: 13, color: checked ? T.text : T.dim, userSelect: "none" }}>
+      <span style={{ width: 13, height: 13, borderRadius: "50%", border: `1.5px solid ${checked ? T.blue : T.line2}`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+        {checked && <span style={{ width: 6, height: 6, borderRadius: "50%", background: T.blue }} />}
+      </span>
+      {label}
+    </label>
+  );
+}
+
+// ===== 弧形量錶 (Colour Gauge) =====
+// 角度約定:0°=頂端,順時針遞增
+function gaugePolar(cx, cy, r, deg) {
+  const rad = (deg * Math.PI) / 180;
+  return [cx + r * Math.sin(rad), cy - r * Math.cos(rad)];
+}
+function gaugeArc(cx, cy, r, startDeg, endDeg) {
+  const [sx, sy] = gaugePolar(cx, cy, r, startDeg);
+  const [ex, ey] = gaugePolar(cx, cy, r, endDeg);
+  const large = (endDeg - startDeg) % 360 > 180 ? 1 : 0;
+  return `M ${sx} ${sy} A ${r} ${r} 0 ${large} 1 ${ex} ${ey}`;
+}
+// 單一色彩弧形量錶:外圈光弧 = Gain(可拖曳),中央發光色盤,下方 Hue 細滑桿
+function ColorGauge({ label, gain, hue, col, disabled, onGain, onHue, startDrag, endDrag }) {
+  const ref = useRef(null);
+  const drag = useRef(false);
+  const START = 225, SWEEP = 270, C = 60, R = 46;
+  const f = (gain + 99) / 198;
+  const endDeg = START + f * SWEEP;
+  const [tx, ty] = gaugePolar(C, C, R, endDeg);
+  const gid = "gg-" + label;
+  const apply = (e) => {
+    const el = ref.current; if (!el) return;
+    const rect = el.getBoundingClientRect();
+    const dx = e.clientX - (rect.left + rect.width / 2);
+    const dy = e.clientY - (rect.top + rect.height / 2);
+    let ang = (Math.atan2(dx, -dy) * 180) / Math.PI;
+    ang = (ang + 360) % 360;
+    let sweep = (ang - START + 360) % 360;
+    if (sweep > SWEEP) sweep = sweep > SWEEP + (360 - SWEEP) / 2 ? 0 : SWEEP;
+    onGain(Math.round((sweep / SWEEP) * 198 - 99));
+  };
+  const tr = drag.current ? "none" : "all 0.25s cubic-bezier(0.16,1,0.3,1)";
+  return (
+    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 6 }}>
+      <svg ref={ref} viewBox="0 0 120 120" width={130} height={130}
+        onPointerDown={disabled ? undefined : (e) => { drag.current = true; try { e.currentTarget.setPointerCapture(e.pointerId); } catch (x) {} startDrag && startDrag(); apply(e); }}
+        onPointerMove={disabled ? undefined : (e) => { if (drag.current) apply(e); }}
+        onPointerUp={disabled ? undefined : (e) => { drag.current = false; try { e.currentTarget.releasePointerCapture(e.pointerId); } catch (x) {} endDrag && endDrag(); }}
+        style={{ touchAction: "none", cursor: disabled ? "default" : "pointer", display: "block", overflow: "visible" }}>
+        <defs>
+          <linearGradient id={gid} x1="0" y1="1" x2="1" y2="0">
+            <stop offset="0%" stopColor="rgba(255,255,255,0.22)" />
+            <stop offset="100%" stopColor={col} />
+          </linearGradient>
+          <filter id={gid + "-glow"} x="-60%" y="-60%" width="220%" height="220%">
+            <feGaussianBlur stdDeviation="3" result="b" />
+            <feMerge><feMergeNode in="b" /><feMergeNode in="SourceGraphic" /></feMerge>
+          </filter>
+        </defs>
+        <path d={gaugeArc(C, C, R, START, START + SWEEP)} fill="none" stroke="#23272d" strokeWidth="9" strokeLinecap="round" />
+        <path d={gaugeArc(C, C, R, START, endDeg)} fill="none" stroke={`url(#${gid})`} strokeWidth="9" strokeLinecap="round" filter={`url(#${gid}-glow)`} style={{ transition: tr }} />
+        <circle cx={C} cy={C} r="24" fill={col} filter={`url(#${gid}-glow)`} style={{ transition: "fill 0.22s" }} />
+        <circle cx={C} cy={C} r="24" fill="none" stroke="rgba(255,255,255,0.3)" strokeWidth="1" />
+        <text x={C} y={C + 6} textAnchor="middle" fontSize="18" fontWeight="800" fill="#fff">{label}</text>
+        <circle cx={tx} cy={ty} r="7" fill="#fff" filter={`url(#${gid}-glow)`} style={{ transition: tr }} />
+        <circle cx={tx} cy={ty} r="3.2" fill={col} style={{ transition: tr }} />
+      </svg>
+      <div style={{ display: "flex", alignItems: "baseline", gap: 5, marginTop: -6 }}>
+        <span style={{ fontSize: 11, color: T.faint, letterSpacing: 0.5 }}>GAIN</span>
+        <span style={{ fontSize: 16, fontWeight: 700, fontFamily: fMono, color: gain !== 0 ? T.blue : T.dim }}>{gain > 0 ? "+" + gain : gain}</span>
+      </div>
+      <div style={{ width: "84%" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10.5, marginBottom: 1 }}>
+          <span style={{ color: T.faint }}>HUE</span>
+          <span style={{ color: hue !== 0 ? T.amber : T.faint, fontFamily: fMono, fontWeight: 600 }}>{hue > 0 ? "+" + hue : hue}</span>
+        </div>
+        <input type="range" min={-99} max={99} value={hue} disabled={disabled}
+          onChange={(e) => onHue(parseInt(e.target.value))}
+          onMouseDown={startDrag} onTouchStart={startDrag} onMouseUp={endDrag} onTouchEnd={endDrag}
+          className="tr-sl"
+          style={{ "--p": ((hue + 99) / 198) * 100 + "%", height: 3, width: "100%", cursor: disabled ? "not-allowed" : "pointer", background: `linear-gradient(90deg, ${T.amber} ${((hue + 99) / 198) * 100}%, #33393f ${((hue + 99) / 198) * 100}%)` }} />
+      </div>
+    </div>
+  );
+}
 
 /**
  * 開關按鈕組件 (Switch / Toggle)
@@ -935,17 +1006,25 @@ export default function App() {
 
   // 選單頁面狀態："paint" (Paint / Look), "video" (Video & Audio)
   const [activeMenu, setActiveMenu] = useState("paint");
+  const [paintLayout, setPaintLayout] = useState("classic"); // "classic" 經典 | "cinema" 劇院
+  // Camera Settings 頁狀態
+  const [cam, setCam] = useState(CAM_DEFAULTS);
+  const updCam = (k, v) => setCam((c) => ({ ...c, [k]: v }));
+  // Tracking Control (側邊欄)
+  const [trackOn, setTrackOn] = useState(true);
+  const [trackMode, setTrackMode] = useState("hybrid");
+  const [trkFace, setTrkFace] = useState(false);
 
   // Multi-Matrix 樣式狀態："wheel" (雷達色環), "eq" (色彩等化器)
 
   // Multi-Matrix 聚焦態
   const [isFocused, setIsFocused] = useState(false);
-  const [multiStyle, setMultiStyle] = useState("wheel"); // "wheel" 雷達色環 | "eq" 色彩等化器(兩種 UX demo)
+  const [multiStyle, setMultiStyle] = useState("wheel"); // "wheel" 雷達色環 | "strip" 色彩量錶(兩種 UX demo)
   // [聚焦態 草稿] 雷達色環點進某軸後,Hue/Sat 先存草稿,色環即時預覽;按「確定」才寫入 st。
   const [draftHue, setDraftHue] = useState(0);
   const [draftSat, setDraftSat] = useState(0);
   const [focusClosing, setFocusClosing] = useState(false); // 退出聚焦態的退場動畫旗標
-  const enterFocus = (a) => { if (!st.multiOn) return; setSelAxis(a); setDraftHue(st.axes[a].hue); setDraftSat(st.axes[a].sat); setFocusClosing(false); setIsFocused(true); };
+  const enterFocus = (a) => { setSelAxis(a); setDraftHue(st.axes[a].hue); setDraftSat(st.axes[a].sat); setFocusClosing(false); setIsFocused(true); };
   // 退出聚焦態:先播退場動畫(~380ms)再真正卸載
   const closeFocus = () => { setFocusClosing(true); setTimeout(() => { setIsFocused(false); setFocusClosing(false); }, 380); };
   const confirmFocus = () => { updAxis(selAxis, "hue", draftHue); updAxis(selAxis, "sat", draftSat); closeFocus(); };
@@ -953,7 +1032,7 @@ export default function App() {
   const ringRef = useRef(null);
   const ringDragRef = useRef(false);
   const ringPointerMove = (e) => {
-    if (!ringDragRef.current || !ringRef.current || !st.multiOn) return;
+    if (!ringDragRef.current || !ringRef.current) return;
     const rect = ringRef.current.getBoundingClientRect();
     const cx = rect.left + rect.width / 2, cy = rect.top + rect.height / 2;
     const dx = e.clientX - cx, dy = e.clientY - cy;
@@ -964,8 +1043,8 @@ export default function App() {
     off = Math.max(-30, Math.min(30, off));             // 限制在該軸 ±30° 範圍
     setDraftHue(Math.round(off / 30 * 99));
     const radius = Math.hypot(dx, dy) * (290 / rect.width); // 換算回內部 290 座標
-    // Saturation 半徑映射:半徑行程 ±14px(在環帶內),與下方節點顯示用同一基準 → 游標與圓圈重合
-    setDraftSat(Math.max(-99, Math.min(99, Math.round((radius - 114) / 14 * 99))));
+    // Saturation 半徑映射:半徑行程與下方節點顯示用同一基準 → 游標與圓圈重合，範圍延伸至內外環
+    setDraftSat(Math.max(-99, Math.min(99, Math.round((radius - 119.75) / 25.25 * 99))));
   };
 
   // Video & Audio 設置狀態
@@ -999,6 +1078,101 @@ export default function App() {
   const baseDragRef = useRef(null);
   const baseCanvasRef = useRef(null);
   const baseCanvasDragRef = useRef(null);
+  const averWheelRingCanvasRef = useRef(null);
+  const [wheelScale, setWheelScale] = useState(0.83);
+
+  // 實時監聽佈局容器尺寸，動態適配最優縮放比例 (佔據 panel 比例)
+  useEffect(() => {
+    const shell = document.getElementById("aver-wheel-layout-shell");
+    if (!shell) return;
+    const observer = new ResizeObserver((entries) => {
+      for (let entry of entries) {
+        const { height } = entry.contentRect;
+        // 內容極限高度(包含外圈節點)設為 298px，使高度能完美填滿。設定下限值為 0.86，在 Panel 變矮時色環大小不變
+        const calculatedScale = height / 298;
+        setWheelScale(Math.max(0.86, Math.min(1.0, calculatedScale)));
+      }
+    });
+    observer.observe(shell);
+    return () => observer.disconnect();
+  }, [block, multiStyle]);
+
+  // 實時繪製雷達色相環 (物理上真正的飽和度降低與變暗)
+  useEffect(() => {
+    if (multiStyle !== "wheel") return;
+    const canvas = averWheelRingCanvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+
+    ctx.clearRect(0, 0, 290, 290);
+    const center = 145;
+    const rIn = 77;
+    const rOut = 145;
+    const ANG_UI = { R: 0, YL: 60, G: 120, CY: 180, B: 240, MG: 300 };
+
+    for (let angle = 0; angle < 360; angle++) {
+      const angleRad = (angle - 90) * Math.PI / 180;
+      let hue = angle;
+      let sIn = 12;   // 內圈飽和度降至 12% (真實去色)
+      let lIn = 12;   // 內圈明度降至 12% (真實變暗)
+      let sOut = 100; // 外圈飽和度 100% (調至最高)
+      let lOut = 58;  // 外圈明度 58%
+
+      if (isFocused && selAxis) {
+        // 聚焦態下，選中軸的 ±30度 扇區高亮，其他區域變暗
+        const baseAng = ANG_UI[selAxis];
+        let diff = (angle - baseAng + 180) % 360 - 180;
+        if (diff < -180) diff += 360;
+        const absDiff = Math.abs(diff);
+
+        if (absDiff <= 30) {
+          const offsetHue = (draftHue / 99) * 30;
+          hue = (angle + offsetHue + 360) % 360;
+          
+          const currentSat = Math.max(8, Math.min(100, 100 + (draftSat / 99) * 50));
+          sOut = currentSat;
+          sIn = Math.min(12, currentSat * 0.12); // 內圈飽和度降低
+          lOut = 58;
+          lIn = 12; // 內圈變暗
+        } else {
+          // 非高亮扇區 (變暗的底色)
+          const fHueSrc = draftHue;
+          const fHueVal = ((ANG_UI[selAxis] + (fHueSrc / 99) * 30 + 360) % 360);
+          hue = fHueVal;
+          sOut = 15;
+          sIn = 6;
+          lOut = 28;
+          lIn = 12;
+        }
+      }
+
+      // 繪製 1.2 度的微型扇區，稍微重疊消除縫隙
+      const angleNextRad = (angle + 1.2 - 90) * Math.PI / 180;
+      
+      const x1 = center + Math.cos(angleRad) * rIn;
+      const y1 = center + Math.sin(angleRad) * rIn;
+      const x2 = center + Math.cos(angleRad) * rOut;
+      const y2 = center + Math.sin(angleRad) * rOut;
+      const x3 = center + Math.cos(angleNextRad) * rOut;
+      const y3 = center + Math.sin(angleNextRad) * rOut;
+      const x4 = center + Math.cos(angleNextRad) * rIn;
+      const y4 = center + Math.sin(angleNextRad) * rIn;
+
+      const grad = ctx.createLinearGradient(x1, y1, x2, y2);
+      grad.addColorStop(0, `hsl(${hue}, ${sIn}%, ${lIn}%)`);
+      grad.addColorStop(1, `hsl(${hue}, ${sOut}%, ${lOut}%)`);
+
+      ctx.beginPath();
+      ctx.moveTo(x1, y1);
+      ctx.lineTo(x2, y2);
+      ctx.lineTo(x3, y3);
+      ctx.lineTo(x4, y4);
+      ctx.closePath();
+      ctx.fillStyle = grad;
+      ctx.fill();
+    }
+  }, [multiStyle, isFocused, selAxis, draftHue, draftSat, st, block]);
   const tempDragCanvasRef = useRef(null); // 拖曳時的低解析度暫存 canvas。
   // [變更] 原本掛在 window.__tempDragCanvas (全域,React 反模式,會跨實例污染且不隨卸載清理),
   //   已改為 useRef,生命週期隨元件管理。
@@ -1112,12 +1286,12 @@ export default function App() {
     
     // 1. Tone 常數
     const bl = st.black / 50 * 0.12;
-    const kneeOn = st.kneeOn && !st.autoKnee;
+    const kneeOn = !st.autoKnee;
     const kp = st.kneePoint / 109;
     const slope = 0.5 + (st.kneeSlope + 5) / 20;
 
     // 2. Matrix 常數
-    const matrixOn = st.matrixOn;
+    const matrixOn = true;
     const levelOn = st.level !== 0;
     const sat = 1 + st.level / 120;
     const phaseOn = st.phase !== 0;
@@ -1151,19 +1325,17 @@ export default function App() {
 
     // 3. Multi-Matrix 活躍軸預篩選
     const activeAxes = [];
-    if (st.multiOn) {
-      AXIS16.forEach((a) => {
-        const ax = st.axes[a];
-        if (ax && (ax.hue !== 0 || ax.sat !== 0)) {
-          activeAxes.push({
-            name: a,
-            hueAngle: AXIS_HUE[a],
-            hueAdj: (ax.hue / 99) * 22,
-            satAdj: (ax.sat / 99) * 0.85
-          });
-        }
-      });
-    }
+    AXIS16.forEach((a) => {
+      const ax = st.axes[a];
+      if (ax && (ax.hue !== 0 || ax.sat !== 0)) {
+        activeAxes.push({
+          name: a,
+          hueAngle: AXIS_HUE[a],
+          hueAdj: (ax.hue / 99) * 22,
+          satAdj: (ax.sat / 99) * 0.85
+        });
+      }
+    });
 
     // --- 像素大迴圈 (完全 GC-free 零記憶體分配) ---
     for (let i = 0; i < sd.length; i += 4) {
@@ -1267,7 +1439,7 @@ export default function App() {
       work[i + 3] = 255;
     }
     
-    if (!bypass && st.detailOn && st.detail !== 0) {
+    if (!bypass && st.detail !== 0) {
       work = applyDetail(work, currentW, currentH, st.detail);
     }
     
@@ -1391,7 +1563,7 @@ export default function App() {
         g.fillText("暗", 5, 14); g.fillText("亮", W - 20, 14);
       }
     }
-  }, [st, bypass, scope, showScope, imgLoaded, isDragging]);
+  }, [st, bypass, scope, showScope, imgLoaded, isDragging, paintLayout, activeMenu]);
 
   useEffect(() => {
     if (block === "knee" || block === "black") setScope("wave");
@@ -1402,10 +1574,10 @@ export default function App() {
   // C. 預設場景存取與狀態管理邏輯 (Preset & State Actions)
   // ==========================================================================
   const blockActive = (id) => {
-    if (id === "matrix") return st.matrixOn && (st.level || st.phase || st.rg || st.rb || st.gr || st.gb || st.br || st.bg);
-    if (id === "multi") return st.multiOn && AXIS16.some((a) => st.axes[a].hue || st.axes[a].sat);
-    if (id === "detail") return st.detailOn && st.detail !== 0;
-    if (id === "knee") return st.kneeOn;
+    if (id === "matrix") return !!(st.level || st.phase || st.rg || st.rb || st.gr || st.gb || st.br || st.bg);
+    if (id === "multi") return AXIS16.some((a) => st.axes[a].hue || st.axes[a].sat);
+    if (id === "detail") return st.detail !== 0;
+    if (id === "knee") return st.autoKnee || st.kneePoint !== 95 || st.kneeSlope !== 0;
     if (id === "black") return st.black !== 0;
     return false;
   };
@@ -1423,7 +1595,7 @@ export default function App() {
   const loadStandard = () => { 
     setSt(JSON.parse(JSON.stringify(DEF))); 
     setActiveScene("std"); 
-    flash("已載入 Standard(原廠預設)"); 
+    flash("已載入 AVer (原廠預設)"); 
   };
   
   const saveNewScene = () => {
@@ -1478,16 +1650,13 @@ export default function App() {
         <div id="aver-control-params-matrix">
           <BlockHeader 
             title="Matrix · User Matrix" 
-            sub="色彩矩陣 — 調整各顏色通道之間的關係" 
-            right={<Toggle on={st.matrixOn} onChange={(v) => upd("matrixOn", v)} label={st.matrixOn ? "ON" : "OFF"} />} 
           />
-          <div style={{ opacity: st.matrixOn ? 1 : 0.35, pointerEvents: st.matrixOn ? "auto" : "none" }}>
+          <div>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", columnGap: 26 }}>
               {MATRIX_KEYS.map(([k, lb, hint]) => (
                 <Slider key={k} k={k} label={lb} hint={hint} min={-99} max={99} val={st[k]} onChange={(v) => upd(k, v)} onStartDrag={startDrag} onEndDrag={endDrag} />
               ))}
             </div>
-            <Note>Level / Phase 影響整體；六個色差軸彼此交互影響，建議對照向量示波器小幅調整。</Note>
           </div>
         </div>
       );
@@ -1502,6 +1671,7 @@ export default function App() {
       // 三者共用同一份狀態 (st.axes / selAxis),僅呈現方式不同。
       // angUI 為本地等分表 (22.5°),與全域 AXIS_HUE 一致 (環顯示與底層運算對齊)。
       // ====================================================================
+      const FULL_NAME = { R: "Red", YL: "Yellow", G: "Green", CY: "Cyan", B: "Blue", MG: "Magenta" };
       const ax = selAxis ? st.axes[selAxis] : null;
       // [A+C 強化] 是否有任一軸被調整過 → 用來「讓調過的浮出、沒調過的降存在感」(三種樣式共用)
       const anyTouched = AXIS16.some((a) => st.axes[a].hue !== 0 || st.axes[a].sat !== 0);
@@ -1515,79 +1685,123 @@ export default function App() {
       const fSatSrc = isFocused ? draftSat : (ax ? ax.sat : 0);
       const fHue = selAxis ? ((angUI[selAxis] + (fHueSrc / 99) * 30 + 360) % 360) : 0;
       const fSat = Math.max(8, Math.min(100, 70 + (fSatSrc / 99) * 30));
-      const ringSelect = "conic-gradient(from 0deg, hsl(0 85% 58%), hsl(60 85% 55%), hsl(120 70% 50%), hsl(180 75% 52%), hsl(240 85% 62%), hsl(300 85% 60%), hsl(360 85% 58%))";
-      const ringFocus = `conic-gradient(from ${fHue - 90}deg, hsl(${fHue} ${fSat}% 22%), hsl(${fHue} ${fSat}% 58%) 50%, hsl(${fHue} ${fSat}% 22%))`;
-      const mOff = !st.multiOn;
+      // 採用 Canvas 實時繪製真正的飽和度與明度徑向變暗去色效果，免除 mask 重疊 CSS 限制
+      const mOff = false;
+
+      const isCinema = paintLayout === "cinema";
+      const styleToggle = (
+        <div style={{ display: "flex", background: "#101216", border: `1px solid ${T.line}`, borderRadius: 6, padding: 3, gap: 4, alignItems: "center", width: isCinema ? "100%" : "auto", boxSizing: "border-box" }}>
+          {[["wheel", "雷達色環"], ["strip", "色彩量錶"]].map(([id, lb]) => (
+            <button key={id}
+              onClick={() => { setMultiStyle(id); setIsFocused(false); }}
+              style={{ 
+                flex: isCinema ? 1 : "initial",
+                padding: isCinema ? "5px 0" : "4px 10px", 
+                fontSize: 13, 
+                cursor: "pointer", 
+                borderRadius: 4, 
+                border: "none",
+                background: multiStyle === id ? T.blue : "transparent",
+                color: multiStyle === id ? "#fff" : T.dim, 
+                fontFamily: fUI, 
+                transition: "all .28s ease",
+                textAlign: "center"
+              }}
+            >
+              {lb}
+            </button>
+          ))}
+        </div>
+      );
 
       return (
-        <div id="aver-control-params-multi" style={{ display: "flex", flexDirection: "column", flex: 1, minHeight: 0 }}>
-          <BlockHeader
-            title="Multi-Matrix"
-            sub="6 軸分區 — 只調整特定色相範圍，不影響其他顏色"
-            right={
-              <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
-                {/* 兩種 UX 呈現方式切換 (demo) */}
-                <div style={{ display: "flex", background: "#101216", border: `1px solid ${T.line}`, borderRadius: 6, padding: 3, gap: 4, alignItems: "center" }}>
-                  {[["wheel", "雷達色環"], ["strip", "色相橫條"], ["fader", "推桿台"], ["eq", "色卡矩陣"]].map(([id, lb]) => (
-                    <button key={id}
-                      onClick={() => { setMultiStyle(id); setIsFocused(false); }}
-                      style={{ padding: "4px 10px", fontSize: 13, cursor: "pointer", borderRadius: 4, border: "none",
-                        background: multiStyle === id ? T.blue : "transparent",
-                        color: multiStyle === id ? "#fff" : T.dim, fontFamily: fUI, transition: "all .28s ease" }}>
-                      {lb}
-                    </button>
-                  ))}
-                </div>
-                <Toggle on={st.multiOn} onChange={(v) => upd("multiOn", v)} label={st.multiOn ? "ON" : "OFF"} />
+        <div id="aver-control-params-multi" style={{ display: "flex", flexDirection: "column", flex: 1, minHeight: 0, overflow: multiStyle === "wheel" ? "visible" : "hidden" }}>
+          {isCinema ? (
+            <>
+              <BlockHeader
+                title="Multi-Matrix"
+              />
+              <div style={{ padding: "0 0 10px 0", flexShrink: 0 }}>
+                {styleToggle}
               </div>
-            }
-          />
-          {/* 2026-06-16 修改註記：配合 Chrome 100% 下防裁切，將 gap 由 24 縮小為 10 */}
-          <div style={{ opacity: st.multiOn ? 1 : 0.35, pointerEvents: st.multiOn ? "auto" : "none", display: "flex", flexDirection: "column", justifyContent: "center", gap: 10, width: "100%", boxSizing: "border-box", flex: 1, minHeight: 0 }}>
+            </>
+          ) : (
+            <BlockHeader
+              title="Multi-Matrix"
+              sub="6 軸分區 — 只調整特定色相範圍，不影響其他顏色"
+              right={
+                <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+                  {styleToggle}
+                </div>
+              }
+            />
+          )}
+          <div style={{ display: "flex", flexDirection: "column", justifyContent: "flex-start", gap: 10, width: "100%", boxSizing: "border-box", flex: 1, minHeight: 0, overflow: multiStyle === "wheel" ? "visible" : "auto", padding: "10px 0" }}>
 
             {multiStyle === "wheel" ? (
               <div 
                 onClick={() => { if (!mOff) { setSelAxis(null); if (isFocused) closeFocus(); } }}
-                style={{ display: "flex", gap: isFocused ? 30 : 10, flexWrap: "wrap", alignItems: "center", justifyContent: "center", width: "100%" }}
+                style={{ display: "flex", gap: isFocused ? 30 : 10, alignItems: "center", justifyContent: "center", width: "100%", height: "100%", minHeight: 0 }}
               >
                 {/* === 雷達色環:選擇態(6軸) ↔ 聚焦態(單軸) === */}
-                <div style={{ display: "flex", justifyContent: "center", alignItems: "center", flexShrink: 0, overflow: "visible" }}>
-                  <div ref={ringRef} 
+                <div id="aver-wheel-layout-shell" style={{ display: "flex", justifyContent: "center", alignItems: "center", flex: "0 0 290px", overflow: "visible", height: "100%" }}>
+                  <div id="aver-wheel-main-container" ref={ringRef} 
                     onClick={(e) => { e.stopPropagation(); if (!mOff && !isFocused) setSelAxis(null); }}
                     style={{ 
                       position: "relative", 
                       width: 290, 
                       height: 290, 
                       flexShrink: 0, 
-                      overflow: "visible"
+                      overflow: "visible",
+                      transform: `scale(${wheelScale})`,
+                      transformOrigin: "center center"
                     }}
                   >
                   {/* [聚焦進場] 從中心射向環的擴張光環(每次選軸重播);發光用徑向漸層自含,不溢出容器避免被裁切 */}
                   {isFocused && (
-                    <div key={"burst-" + selAxis} style={{ position: "absolute", left: "50%", top: "50%", width: 150, height: 150, borderRadius: "50%", border: `2px solid hsl(${fHue} 85% 62%)`, background: `radial-gradient(circle, transparent 56%, hsl(${fHue} 85% 60% / .45) 70%, transparent 82%)`, transform: "translate(-50%,-50%)", animation: focusClosing ? "averBurstOut .24s ease-in both" : "averBurst .88s cubic-bezier(0.16, 1, 0.3, 1) both", pointerEvents: "none", zIndex: 7 }} />
+                    <div id="aver-wheel-focus-burst" key={"burst-" + selAxis} style={{ position: "absolute", left: "50%", top: "50%", width: 150, height: 150, borderRadius: "50%", border: `2px solid hsl(${fHue} 85% 62%)`, background: `radial-gradient(circle, transparent 56%, hsl(${fHue} 85% 60% / .45) 70%, transparent 82%)`, transform: "translate(-50%,-50%)", animation: focusClosing ? "averBurstOut .24s ease-in both" : "averBurst .88s cubic-bezier(0.16, 1, 0.3, 1) both", pointerEvents: "none", zIndex: 7 }} />
                   )}
-                  {/* 外圍發光背景 (模糊層) - 採用雙圖層 Cross-fade 以免 conic-gradient 漸變生硬閃爍 */}
-                  <div style={{ position: "absolute", inset: 16, borderRadius: "50%", background: ringSelect, filter: "blur(18px)", opacity: isFocused ? 0 : 0.22, transition: "opacity 0.58s cubic-bezier(0.16, 1, 0.3, 1)" }} />
-                  <div style={{ position: "absolute", inset: 16, borderRadius: "50%", background: ringFocus, filter: "blur(18px)", opacity: isFocused ? 0.4 : 0, transition: "opacity 0.58s cubic-bezier(0.16, 1, 0.3, 1)" }} />
+
                   
-                  {/* 實體圓環層 - 採用雙圖層 Cross-fade */}
-                  <div style={{ position: "absolute", inset: 16, borderRadius: "50%", background: ringSelect, WebkitMask: "radial-gradient(closest-side, transparent 70%, #000 71%)", mask: "radial-gradient(closest-side, transparent 70%, #000 71%)", opacity: isFocused ? 0 : 0.9, transition: "opacity 0.58s cubic-bezier(0.16, 1, 0.3, 1)" }} />
-                  <div style={{ position: "absolute", inset: 16, borderRadius: "50%", background: ringFocus, WebkitMask: "radial-gradient(closest-side, transparent 70%, #000 71%)", mask: "radial-gradient(closest-side, transparent 70%, #000 71%)", opacity: isFocused ? 0.9 : 0, transition: "opacity 0.58s cubic-bezier(0.16, 1, 0.3, 1)" }} />
+                  {/* 實體圓環層 - 採用高性能 2D Canvas 繪製，呈現物理真實的飽和度與明度去色變暗 */}
+                  <canvas 
+                    id="aver-wheel-ring-canvas" 
+                    ref={averWheelRingCanvasRef} 
+                    width="290" 
+                    height="290" 
+                    style={{ 
+                      position: "absolute", 
+                      inset: 0, 
+                      width: 290, 
+                      height: 290, 
+                      borderRadius: "50%", 
+                      pointerEvents: "none",
+                      zIndex: 3,
+                      filter: isFocused 
+                        ? `drop-shadow(0 0 14px hsl(${fHue} 85% 60% / 0.22))` 
+                        : "drop-shadow(0 0 10px rgba(255, 255, 255, 0.12))",
+                      transition: "filter 0.58s cubic-bezier(0.16, 1, 0.3, 1)"
+                    }} 
+                  />
                   
-                  <div style={{ position: "absolute", inset: 48, borderRadius: "50%", border: `1px dashed ${T.line2}`, animation: isFocused ? "none" : "mmspin 30s linear infinite", opacity: isFocused ? 0.3 : 1, transition: "opacity .3s" }} />
+                  {/* 中間彩色圓環正中央緩慢旋轉的虛線圈 */}
+                  <div style={{ position: "absolute", inset: 34, borderRadius: "50%", border: "1.2px dashed rgba(255, 255, 255, 0.16)", pointerEvents: "none", animation: "mmspin 35s linear infinite", zIndex: 4 }} />
 
                   {/* 動態 SVG 雷達網格與連接線 */}
-                  <svg style={{ position: "absolute", inset: 0, width: "100%", height: "100%", pointerEvents: "none", zIndex: 5 }}>
+                  <svg id="aver-wheel-radar-lines-svg" style={{ position: "absolute", inset: 0, width: "100%", height: "100%", pointerEvents: "none", zIndex: 5 }}>
                     {/* 16 條放射狀均勻參考虛線 */}
                     {AXIS16.map((a) => {
                       const isSel = selAxis === a;
                       const isDragNode = isFocused && isSel;
-                      const baseAng = (angUI[a] - 90) * Math.PI / 180;
-                      const dispAng = isDragNode ? (fHue - 90) * Math.PI / 180 : baseAng;
-                      const rNode = isDragNode ? 114 + (draftSat / 99) * 14 : 114;
+                      const nodeHueVal = isDragNode ? draftHue : st.axes[a].hue;
+                      const nodeAngDeg = angUI[a] + (nodeHueVal / 99) * 30;
+                      const dispAng = (nodeAngDeg - 90) * Math.PI / 180;
+                      const nodeSatVal = isDragNode ? draftSat : st.axes[a].sat;
+                      const rNode = 119.75 + (nodeSatVal / 99) * 25.25;
                       const rx = 145 + Math.cos(dispAng) * rNode;
                       const ry = 145 + Math.sin(dispAng) * rNode;
                       const lineHide = isFocused && !isSel;
+                      const nodeHue = (nodeAngDeg + 360) % 360;
                       return (
                         <line 
                           key={a}
@@ -1595,8 +1809,8 @@ export default function App() {
                           y1={145} 
                           x2={rx} 
                           y2={ry} 
-                          stroke="rgba(255, 255, 255, 0.08)" 
-                          strokeWidth="1" 
+                          stroke={isSel ? `hsl(${nodeHue} 95% 70% / 0.5)` : "rgba(255, 255, 255, 0.08)"} 
+                          strokeWidth={isSel ? "1.2" : "1"} 
                           strokeDasharray="2, 4" 
                           style={{
                             opacity: lineHide ? 0 : 1,
@@ -1608,9 +1822,15 @@ export default function App() {
                     {/* 雷達連接多邊形參考線 */}
                     <polygon
                       points={AXIS16.map((a) => {
-                        const baseAng = (angUI[a] - 90) * Math.PI / 180;
-                        const px = 145 + Math.cos(baseAng) * 114;
-                        const py = 145 + Math.sin(baseAng) * 114;
+                        const isSel = selAxis === a;
+                        const isDragNode = isFocused && isSel;
+                        const nodeHueVal = isDragNode ? draftHue : st.axes[a].hue;
+                        const nodeAngDeg = angUI[a] + (nodeHueVal / 99) * 30;
+                        const dispAng = (nodeAngDeg - 90) * Math.PI / 180;
+                        const nodeSatVal = isDragNode ? draftSat : st.axes[a].sat;
+                        const rNode = 119.75 + (nodeSatVal / 99) * 25.25;
+                        const px = 145 + Math.cos(dispAng) * rNode;
+                        const py = 145 + Math.sin(dispAng) * rNode;
                         return `${px},${py}`;
                       }).join(" ")}
                       fill="rgba(30, 155, 240, 0.04)"
@@ -1630,7 +1850,7 @@ export default function App() {
                     const py = (deg, r) => 145 + Math.sin((deg - 90) * Math.PI / 180) * r;
                     // 2026-06-16 修改註記：配合 6 軸 (間距 60°)，扇形繪製範圍改為 ±30°
                     const a0 = base - 30, a1 = base + 30;
-                    const rIn = 86, rOut = 132;
+                    const rIn = 77, rOut = 145;
                     const segPath = (s0, s1) =>
                       `M ${px(s0, rOut)} ${py(s0, rOut)} A ${rOut} ${rOut} 0 0 1 ${px(s1, rOut)} ${py(s1, rOut)} L ${px(s1, rIn)} ${py(s1, rIn)} A ${rIn} ${rIn} 0 0 0 ${px(s0, rIn)} ${py(s0, rIn)} Z`;
                     const fullSector = `M ${px(a0, rOut)} ${py(a0, rOut)} A ${rOut} ${rOut} 0 0 1 ${px(a1, rOut)} ${py(a1, rOut)} L ${px(a1, rIn)} ${py(a1, rIn)} A ${rIn} ${rIn} 0 0 0 ${px(a0, rIn)} ${py(a0, rIn)} Z`;
@@ -1642,7 +1862,7 @@ export default function App() {
                       return { d: segPath(s0, Math.min(a1, s1)), fill: `hsl(${hue} 85% 58%)` };
                     });
                     return (
-                      <svg width="290" height="290" style={{ position: "absolute", inset: 0, pointerEvents: "none", zIndex: 6, overflow: "visible" }}>
+                      <svg id="aver-wheel-focus-sector-svg" width="290" height="290" style={{ position: "absolute", inset: 0, pointerEvents: "none", zIndex: 6, overflow: "visible" }}>
                         <defs>
                           <filter id="sectorLift" x="-50%" y="-50%" width="200%" height="200%">
                             <feDropShadow dx="0" dy="3" stdDeviation="6" floodColor="#000" floodOpacity="0.5" />
@@ -1654,8 +1874,6 @@ export default function App() {
                           </radialGradient>
                         </defs>
                         <g className={focusClosing ? "aver-sector-out" : "aver-sector-in"} filter="url(#sectorLift)">
-                          {/* 鮮明彩虹色相漸層(密切片拼接,同選擇態配方) */}
-                          {slices.map((s, i) => <path key={i} d={s.d} fill={s.fill} />)}
                           {/* 僅加頂部受光高光,不壓暗,保持鮮亮 */}
                           <path d={fullSector} fill="url(#sectorSheen)" />
                           <path d={fullSector} fill="none" stroke="rgba(255,255,255,0.55)" strokeWidth="1" />
@@ -1668,63 +1886,82 @@ export default function App() {
                     const isSel = selAxis === a;
                     const hide = isFocused && !isSel;
                     const isDragNode = isFocused && isSel; // 聚焦中的選中節點 → 可拖曳(繞圈調 Hue,半徑調 Saturation)
-                    const baseAng = (angUI[a] - 90) * Math.PI / 180;
-                    const dispAng = isDragNode ? (fHue - 90) * Math.PI / 180 : baseAng;
-                    // [方案B] 半徑隨 Saturation 變化,與 ringPointerMove 用同一基準(±14px),游標與圓圈完全重合
-                    const rNode = isDragNode ? 114 + (draftSat / 99) * 14 : 114;
+                    const nodeHueVal = isDragNode ? draftHue : st.axes[a].hue;
+                    const nodeAngDeg = angUI[a] + (nodeHueVal / 99) * 30;
+                    const dispAng = (nodeAngDeg - 90) * Math.PI / 180;
+                    const nodeSatVal = isDragNode ? draftSat : st.axes[a].sat;
+                    const rNode = 119.75 + (nodeSatVal / 99) * 25.25;
                     const x = 145 + Math.cos(dispAng) * rNode, y = 145 + Math.sin(dispAng) * rNode;
-                    const nodeHue = isDragNode ? fHue : angUI[a];
-                    const [r, g, b] = hsv2rgb(nodeHue, isDragNode ? fSat / 100 : 0.85, 0.95);
+                    const nodeHue = (nodeAngDeg + 360) % 360;
+                    const nodeSat = Math.min(1.0, 0.66 + (nodeSatVal / 99) * 0.44);
+                    const nodeVal = 0.58 + (nodeSatVal / 99) * 0.37;
+                    const [r, g, b] = hsv2rgb(nodeHue, nodeSat, nodeVal);
                     const touched = st.axes[a].hue !== 0 || st.axes[a].sat !== 0;
                     // [C] 有調整過的軸存在時,未調整且未選中的節點降存在感(縮小+變淡),讓調過的浮出
                     const dim = !isFocused && anyTouched && !touched && !isSel;
                     const sz = isSel ? 48 : touched ? 42 : dim ? 30 : 38;
                     return (
-                      <button key={a}
-                        onClick={isDragNode ? undefined : (e) => { e.stopPropagation(); enterFocus(a); }}
-                        onPointerDown={isDragNode ? (e) => { if (mOff) return; e.preventDefault(); ringDragRef.current = true; try { e.currentTarget.setPointerCapture(e.pointerId); } catch {} ringPointerMove(e); } : undefined}
-                        onPointerMove={isDragNode ? ringPointerMove : undefined}
-                        onPointerUp={isDragNode ? (e) => { ringDragRef.current = false; try { e.currentTarget.releasePointerCapture(e.pointerId); } catch {} } : undefined}
+                      <div key={a}
+                        className="aver-wheel-node-btn-wrapper"
+                        id={`aver-wheel-node-btn-wrapper-${a}`}
                         style={{
                           position: "absolute", left: x, top: y, transform: "translate(-50%,-50%)",
-                          width: sz, height: sz, borderRadius: "50%",
-                          cursor: mOff ? "default" : isDragNode ? "grab" : hide ? "default" : "pointer",
-                          touchAction: isDragNode ? "none" : "auto",
-                          background: `rgb(${r * 255},${g * 255},${b * 255})`,
-                          border: isSel ? "2.5px solid #fff" : touched ? `2.5px solid ${T.amber}` : "2px solid rgba(255,255,255,0.85)",
-                          boxShadow: isSel ? `0 0 22px hsl(${nodeHue} 90% 60% / 0.95), 0 2px 6px rgba(0,0,0,0.5)` : touched ? `0 0 12px ${T.amber}, 0 2px 6px rgba(0,0,0,0.5)` : `0 2px 6px rgba(0,0,0,0.45)`,
-                          fontSize: touched ? 15 : dim ? 12 : 15, fontFamily: fMono, fontWeight: 800, color: "rgba(0,0,0,0.82)",
+                          width: sz, height: sz,
                           opacity: hide ? 0 : dim ? 0.4 : 1, pointerEvents: (mOff || hide) ? "none" : "auto",
-                          transition: isDragNode ? "none" : "all 0.58s cubic-bezier(0.16, 1, 0.3, 1)", padding: 0, zIndex: isDragNode ? 25 : touched ? 12 : 10,
+                          zIndex: isDragNode ? 35 : isSel ? 32 : touched ? 30 : 28,
+                          transition: isDragNode ? "none" : "all 0.58s cubic-bezier(0.16, 1, 0.3, 1)",
                           animation: isDragNode ? (focusClosing ? "averNodeRetreat .24s ease-in both" : "averNodeShoot .62s cubic-bezier(0.34, 1.56, 0.64, 1) both") : undefined,
-                        }}>
-                        {a}
-                        {/* [A] 已調整記號:雜色背景中比外框更醒目 */}
-                        {touched && !isSel && (
-                          <span style={{ position: "absolute", top: -4, right: -4, width: 13, height: 13, borderRadius: "50%", background: T.amber, border: "2px solid #0e1114", boxShadow: `0 0 6px ${T.amber}`, pointerEvents: "none" }} />
-                        )}
-                      </button>
+                          overflow: "visible",
+                        }}
+                      >
+                        <button
+                          className="aver-wheel-node-btn"
+                          id={`aver-wheel-node-btn-${a}`}
+                          onClick={isDragNode ? undefined : (e) => { e.stopPropagation(); enterFocus(a); }}
+                          onPointerDown={isDragNode ? (e) => { if (mOff) return; e.preventDefault(); ringDragRef.current = true; try { e.currentTarget.setPointerCapture(e.pointerId); } catch {} ringPointerMove(e); } : undefined}
+                          onPointerMove={isDragNode ? ringPointerMove : undefined}
+                          onPointerUp={isDragNode ? (e) => { ringDragRef.current = false; try { e.currentTarget.releasePointerCapture(e.pointerId); } catch {} } : undefined}
+                          style={{
+                            width: "100%", height: "100%", borderRadius: "50%",
+                            cursor: mOff ? "default" : isDragNode ? "grab" : hide ? "default" : "pointer",
+                            touchAction: isDragNode ? "none" : "auto",
+                            background: `rgb(${r * 255},${g * 255},${b * 255})`,
+                            border: isSel ? "2.5px solid #fff" : "2px solid rgba(255,255,255,0.85)",
+                            boxShadow: isSel ? `0 0 22px hsl(${nodeHue} 90% 60% / 0.95), 0 2px 6px rgba(0,0,0,0.5)` : `0 2px 6px rgba(0,0,0,0.45)`,
+                            fontSize: isSel ? 15 : dim ? 12 : 15, fontFamily: fMono, fontWeight: 800, color: nodeVal < 0.4 ? "rgba(255,255,255,0.9)" : "rgba(0,0,0,0.82)",
+                            padding: 0,
+                            display: "flex", alignItems: "center", justifyContent: "center"
+                          }}>
+                          {a}
+                        </button>
+                      </div>
                     );
                   })}
 
-                  <div style={{ position: "absolute", inset: 68, borderRadius: "50%", background: "radial-gradient(circle at 38% 30%, #181c21, #0e1114)", border: `1px solid ${isFocused ? `hsl(${fHue} 60% 45%)` : T.line2}`, boxShadow: "inset 0 0 24px rgba(0,0,0,0.6)", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 1, transition: "border-color 0.48s cubic-bezier(0.16, 1, 0.3, 1)", zIndex: 20 }}>
+                  <div id="aver-wheel-center-controller" style={{ position: "absolute", inset: 68, borderRadius: "50%", background: "radial-gradient(circle at 38% 30%, #181c21, #0e1114)", border: `1px solid ${isFocused ? `hsl(${fHue} 60% 45%)` : T.line2}`, boxShadow: "inset 0 0 24px rgba(0,0,0,0.6)", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 2, transition: "border-color 0.48s cubic-bezier(0.16, 1, 0.3, 1)", zIndex: 20 }}>
                     {isFocused ? (
                       <>
-                        <span style={{ fontSize: 11, letterSpacing: 1.5, color: T.faint, fontFamily: fMono }}>調整中</span>
-                        <span style={{ fontSize: 26, fontWeight: 700, color: T.text, lineHeight: 1.05 }}>{selAxis}</span>
-                        <div style={{ display: "flex", gap: 10, marginTop: 5, fontFamily: fMono, fontSize: 13 }}>
+                        <span style={{ fontSize: 15, letterSpacing: 1.5, color: T.faint, fontFamily: fMono }}>調整中</span>
+                        <span style={{ 
+                          fontSize: selAxis === "MG" ? 21 : selAxis === "YL" ? 23 : selAxis === "G" ? 25 : 27, 
+                          fontWeight: 700, 
+                          color: T.text, 
+                          lineHeight: 1.15,
+                          marginTop: 2
+                        }}>{FULL_NAME[selAxis]}</span>
+                        <div style={{ display: "flex", gap: 14, marginTop: 6, fontFamily: fMono, fontSize: 17 }}>
                           <span style={{ color: draftHue ? T.blue : T.faint }}>H {draftHue > 0 ? "+" + draftHue : draftHue}</span>
                           <span style={{ color: draftSat ? T.amber : T.faint }}>S {draftSat > 0 ? "+" + draftSat : draftSat}</span>
                         </div>
                       </>
                     ) : (
                       <>
-                        <span style={{ fontSize: 12, letterSpacing: 2, color: T.faint, fontFamily: fMono }}>選擇色相軸</span>
-                        <span style={{ fontSize: 18, fontWeight: 600, color: T.dim, lineHeight: 1.2, marginTop: 2 }}>6 軸</span>
+                        <span style={{ fontSize: 16.5, letterSpacing: 2, color: T.faint, fontFamily: fMono }}>選擇色相軸</span>
+                        <span style={{ fontSize: 26, fontWeight: 600, color: T.dim, lineHeight: 1.2, marginTop: 3 }}>6 軸</span>
                         {anyTouched ? (
-                          <span style={{ fontSize: 11, color: T.amber, marginTop: 3, fontFamily: fMono }}>● 已調整 {touchedCount} 軸</span>
+                          <span style={{ fontSize: 14.5, color: T.amber, marginTop: 4, fontFamily: fMono }}>● 已調整 {touchedCount} 軸</span>
                         ) : (
-                          <span style={{ fontSize: 10.5, color: T.faint, marginTop: 3 }}>點任一節點調整</span>
+                          <span style={{ fontSize: 14, color: T.faint, marginTop: 4 }}>點任一節點調整</span>
                         )}
                       </>
                     )}
@@ -1737,7 +1974,7 @@ export default function App() {
                     /* [聚焦態] 控制面板在環右側(並排) */
                     <div className={focusClosing ? "aver-fade-out" : "aver-pop"} style={{ background: "rgba(0,0,0,0.18)", border: `1px solid ${T.line}`, borderRadius: 10, padding: "14px 16px", boxSizing: "border-box" }}>
                       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 12 }}>
-                        <span style={{ fontSize: 15, color: T.text, fontWeight: 600 }}>調整 {selAxis} <span style={{ color: T.faint, fontWeight: 400, fontFamily: fMono, fontSize: 13 }}>· 基準 {Math.round(angUI[selAxis])}°</span></span>
+                        <span style={{ fontSize: 15, color: T.text, fontWeight: 600 }}>調整 {FULL_NAME[selAxis]}</span>
                         {(draftHue !== ax.hue || draftSat !== ax.sat) && (
                           <span style={{ fontSize: 11, color: T.amber, fontFamily: fMono }}>● 尚未套用</span>
                         )}
@@ -1759,17 +1996,96 @@ export default function App() {
                   ) : (
                     <>
                       <div style={{ fontSize: 14, color: T.text, fontWeight: 600, marginBottom: 6 }}>選擇要調整的色相軸</div>
-                      <div style={{ fontSize: 12.5, color: T.dim, lineHeight: 1.7, marginBottom: 14 }}>
-                        點節點調整;<span style={{ color: T.amber }}>橘點</span> = 已調整。每軸僅影響該色相範圍,不動其他顏色。
+                      <div style={{ fontSize: 12.5, color: T.dim, lineHeight: 1.6, marginBottom: 14 }}>
+                        請點擊左側色相環上的節點（如 Red, Yellow 等）或下方已調整的晶片標籤，即可進入該色彩軸進行詳細微調。
                       </div>
+
                       {AXIS16.some((a) => st.axes[a].hue || st.axes[a].sat) ? (
-                        <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 14 }}>
-                          <span style={{ fontSize: 11.5, color: T.faint, width: "100%", marginBottom: 2 }}>已調整的軸:</span>
-                          {AXIS16.filter((a) => st.axes[a].hue || st.axes[a].sat).map((a) => (
-                            <button key={a} onClick={() => enterFocus(a)} style={{ padding: "3px 9px", fontSize: 12, cursor: "pointer", borderRadius: 5, border: `1px solid ${T.amber}`, background: "rgba(245,166,35,0.1)", color: T.amber, fontFamily: fMono }}>
-                              {a} <span style={{ opacity: 0.7 }}>H{st.axes[a].hue >= 0 ? "+" : ""}{st.axes[a].hue} S{st.axes[a].sat >= 0 ? "+" : ""}{st.axes[a].sat}</span>
-                            </button>
-                          ))}
+                        <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 14 }}>
+                          <span style={{ fontSize: 13.5, color: "rgba(255, 255, 255, 0.7)", fontWeight: 600, width: "100%", marginBottom: 4 }}>已調整的軸:</span>
+                          {AXIS16.filter((a) => st.axes[a].hue || st.axes[a].sat).map((a) => {
+                            const FULL_NAME = { R: "Red", YL: "Yellow", G: "Green", CY: "Cyan", B: "Blue", MG: "Magenta" };
+                            const dotCol = `hsl(${angUI[a]} 90% 55%)`;
+                            return (
+                              <div
+                                key={a}
+                                onClick={() => enterFocus(a)}
+                                style={{
+                                  display: "flex",
+                                  alignItems: "center",
+                                  gap: "9px",
+                                  padding: "6px 14px",
+                                  background: "#181d24",
+                                  border: "1px solid rgba(255, 255, 255, 0.12)",
+                                  borderRadius: "18px",
+                                  cursor: "pointer",
+                                  userSelect: "none",
+                                  transition: "all 0.22s ease-out",
+                                  boxShadow: "0 2px 5px rgba(0,0,0,0.25)"
+                                }}
+                                onMouseEnter={(e) => {
+                                  e.currentTarget.style.borderColor = "rgba(255, 255, 255, 0.35)";
+                                  e.currentTarget.style.background = "#202730";
+                                  e.currentTarget.style.boxShadow = `0 0 10px ${dotCol}25, 0 2px 5px rgba(0,0,0,0.25)`;
+                                }}
+                                onMouseLeave={(e) => {
+                                  e.currentTarget.style.borderColor = "rgba(255, 255, 255, 0.12)";
+                                  e.currentTarget.style.background = "#181d24";
+                                  e.currentTarget.style.boxShadow = "0 2px 5px rgba(0,0,0,0.25)";
+                                }}
+                              >
+                                {/* 左側色彩指示點 */}
+                                <span style={{ width: 9, height: 9, borderRadius: "50%", background: dotCol, boxShadow: `0 0 7px ${dotCol}` }} />
+                                
+                                {/* 中間文字 (全稱 + 數值) */}
+                                <span style={{ fontSize: 14, fontWeight: 700, color: "#fff", fontFamily: fUI }}>
+                                  {FULL_NAME[a]}
+                                </span>
+                                <span style={{ fontSize: 12, color: "rgba(255,255,255,0.48)", fontFamily: fMono }}>
+                                  H{st.axes[a].hue >= 0 ? "+" : ""}{st.axes[a].hue} S{st.axes[a].sat >= 0 ? "+" : ""}{st.axes[a].sat}
+                                </span>
+
+                                {/* 右側重設 ✕ 按鈕 */}
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    if (mOff) return;
+                                    updAxis(a, "hue", 0);
+                                    updAxis(a, "sat", 0);
+                                  }}
+                                  title="將此軸歸零"
+                                  style={{
+                                    display: "flex",
+                                    alignItems: "center",
+                                    justifyContent: "center",
+                                    width: 17,
+                                    height: 17,
+                                    borderRadius: "50%",
+                                    border: "none",
+                                    background: "rgba(255, 255, 255, 0.15)",
+                                    color: "rgba(255, 255, 255, 0.7)",
+                                    fontSize: 10,
+                                    fontWeight: 900,
+                                    cursor: "pointer",
+                                    transition: "all 0.15s ease",
+                                    padding: 0,
+                                    marginLeft: 4
+                                  }}
+                                  onMouseEnter={(e) => {
+                                    e.stopPropagation();
+                                    e.currentTarget.style.background = "rgba(255, 59, 48, 0.25)";
+                                    e.currentTarget.style.color = "#ff3b30";
+                                  }}
+                                  onMouseLeave={(e) => {
+                                    e.currentTarget.style.background = "rgba(255, 255, 255, 0.15)";
+                                    e.currentTarget.style.color = "rgba(255, 255, 255, 0.7)";
+                                  }}
+                                >
+                                  ✕
+                                </button>
+                              </div>
+                            );
+                          })}
                         </div>
                       ) : (
                         <div style={{ fontSize: 12, color: T.faint, marginBottom: 14 }}>尚未調整任何軸。</div>
@@ -1779,341 +2095,39 @@ export default function App() {
                   )}
                 </div>
               </div>
-            ) : multiStyle === "strip" ? (
-              /* === 色相橫條設計方案 (長方形橫條色相圖 + 下方六軸細節調整卡片) === */
-              <div 
-                style={{ width: "100%", display: "flex", flexDirection: "column", alignItems: "center", gap: 12, padding: "4px 8px 6px" }}
-              >
-                {/* 1. 上方長方形漸變色相圖與色彩節點 */}
-                <div style={{ width: 820, display: "flex", flexDirection: "column", alignItems: "center", gap: 6, position: "relative", margin: "0 auto" }}>
-                  <div style={{ fontSize: 13, color: T.dim, alignSelf: "flex-start", marginBottom: 2 }}>
-                    點擊橫條上的色彩節點或色條區域解鎖對應的調整元件：
-                  </div>
-                  
-                  {/* 色條容器 */}
-                  <div 
-                    onClick={(e) => {
-                      if (mOff) return;
-                      const rect = e.currentTarget.getBoundingClientRect();
-                      const clickX = e.clientX - rect.left;
-                      // 與下方卡片中心點完美垂直對齊的 6 個位置
-                      const positions = [62.5, 201.5, 340.5, 479.5, 618.5, 757.5];
-                      let minIdx = 0;
-                      let minDistance = Math.abs(clickX - positions[0]);
-                      for (let idx = 1; idx < positions.length; idx++) {
-                        const dist = Math.abs(clickX - positions[idx]);
-                        if (dist < minDistance) {
-                          minDistance = dist;
-                          minIdx = idx;
-                        }
-                      }
-                      setSelAxis(AXIS16[minIdx]);
-                    }}
-                    style={{ 
-                      position: "relative", 
-                      width: 820, 
-                      height: 24, 
-                      display: "flex", 
-                      alignItems: "center", 
-                      marginTop: 6,
-                      marginBottom: 6,
-                      boxSizing: "border-box",
-                      cursor: mOff ? "default" : "pointer"
-                    }}
-                  >
-                    {/* 背景漸變條 */}
-                    <div style={{ 
-                      width: "100%", 
-                      height: 12, 
-                      borderRadius: 6, 
-                      background: "linear-gradient(to right, hsl(0, 85%, 58%), hsl(60, 85%, 55%), hsl(120, 70%, 50%), hsl(180, 75%, 52%), hsl(240, 85%, 62%), hsl(300, 85%, 60%), hsl(360, 85%, 58%))",
-                      boxShadow: "inset 0 1px 3px rgba(0,0,0,0.5)"
-                    }} />
-                    
-                    {/* 色彩節點 */}
-                    {AXIS16.map((a, i) => {
-                      const isSel = selAxis === a;
-                      const touched = st.axes[a].hue !== 0 || st.axes[a].sat !== 0;
-                      const ang = angUI[a];
-                      const [r, g, b] = hsv2rgb(ang, 0.9, 0.95);
-                      const col = `rgb(${r * 255},${g * 255},${b * 255})`;
-                      
-                      // 與下方卡片中心點完美垂直對齊的位置 (i * (卡寬125 + gap14) + 卡寬/2)
-                      const leftPos = i * 139 + 62.5;
-                      
-                      const handleNodeClick = (e) => {
-                        e.stopPropagation();
-                        if (mOff) return;
-                        setSelAxis(a); // 點擊色彩節點，直接選取（不重置為 null）
-                      };
-                      
-                      const sz = isSel ? 36 : touched ? 28 : 24;
-                      
-                      return (
-                        <button 
-                          key={a}
-                          onClick={handleNodeClick}
-                          style={{
-                            position: "absolute",
-                            left: leftPos,
-                            top: "50%",
-                            transform: "translate(-50%, -50%)",
-                            width: sz,
-                            height: sz,
-                            borderRadius: "50%",
-                            background: col,
-                            border: isSel ? "2.5px solid #fff" : touched ? `2.5px solid ${T.amber}` : "2px solid rgba(255,255,255,0.85)",
-                            boxShadow: isSel ? `0 0 16px hsl(${ang} 90% 60% / 0.95), 0 2px 5px rgba(0,0,0,0.5)` : touched ? `0 0 8px ${T.amber}, 0 2px 4px rgba(0,0,0,0.5)` : "0 2px 4px rgba(0,0,0,0.4)",
-                            cursor: mOff ? "default" : "pointer",
-                            display: "flex",
-                            alignItems: "center",
-                            justifyContent: "center",
-                            fontSize: isSel ? 11.5 : 10,
-                            fontFamily: fMono,
-                            fontWeight: 800,
-                            color: "rgba(0,0,0,0.82)",
-                            opacity: (selAxis && !isSel) ? 0.45 : 1,
-                            transition: "all 0.25s cubic-bezier(0.16, 1, 0.3, 1)",
-                            padding: 0,
-                            zIndex: isSel ? 10 : 5
-                          }}
-                        >
-                          {a}
-                          {touched && !isSel && (
-                            <span style={{ position: "absolute", top: -3, right: -3, width: 8, height: 8, borderRadius: "50%", background: T.amber, border: "1.5px solid #0e1114", boxShadow: `0 0 4px ${T.amber}` }} />
-                          )}
-                        </button>
-                      );
-                    })}
-                  </div>
+            ) : (
+              /* === 色彩量錶盤 (Colour Gauges):弧形量錶 + 中央發光色盤,交錯波浪排列 === */
+              <div style={{ width: "100%", boxSizing: "border-box", padding: "6px 8px 8px" }}>
+                <div style={{ fontSize: 13, color: T.dim, marginBottom: 8, textAlign: "center" }}>
+                  拖曳量錶外圈調整 Gain,下方滑桿調整 Hue;中央色盤即時反映該軸調整後的色彩。
                 </div>
-
-                {/* 2. 下方 6 軸細節調整卡片在一列中排開 */}
-                <div 
-                  style={{ display: "flex", gap: 14, justifyContent: "center", alignItems: "center", width: "100%", boxSizing: "border-box" }}
-                >
+                <div style={{ display: "flex", flexWrap: "wrap", justifyContent: "center", gap: 14, alignItems: "flex-start", padding: "16px 0 20px" }}>
                   {AXIS16.map((a, i) => {
                     const axObj = st.axes[a];
                     const touched = axObj.hue !== 0 || axObj.sat !== 0;
-                    const isSel = selAxis === a;
-                    const enabled = isSel;
                     const ang = angUI[a];
-                    const [r, g, b] = hsv2rgb(ang, 0.85, 0.95);
-                    const col = `rgb(${r * 255},${g * 255},${b * 255})`;
-                    const dim = !enabled; // 只要不是當前選中的卡片，通通變淡，完美表現選中/未選中
-                    
-                    const isSlDisabled = mOff || !enabled;
-
+                    const nodeHue = (ang + (axObj.hue / 99) * 30 + 360) % 360;
+                    const nodeSat = Math.max(0.1, Math.min(1.0, 0.85 + (axObj.sat / 99) * 0.3));
+                    const nodeVal = Math.max(0.4, Math.min(1.0, 0.9 + (axObj.sat / 99) * 0.45));
+                    const [r, g, b] = hsv2rgb(nodeHue, nodeSat, nodeVal);
+                    const col = `rgb(${Math.round(r * 255)},${Math.round(g * 255)},${Math.round(b * 255)})`;
                     return (
-                      <div key={a}
-                        style={{
-                          flex: "0 0 125px",
-                          background: T.panel2,
-                          border: `1.5px solid ${isSel ? col : touched ? T.amber : T.line2}`,
-                          borderRadius: 8, overflow: "hidden", display: "flex", flexDirection: "column",
-                          cursor: "default", 
-                          transition: "all 0.25s cubic-bezier(0.16, 1, 0.3, 1)", boxSizing: "border-box",
-                          opacity: dim ? 0.48 : 1, 
-                          boxShadow: isSel ? `0 0 14px ${col}66` : touched ? `0 0 8px ${T.amber}33` : "none"
-                        }}>
-                        <div style={{ height: 6, background: col, opacity: dim ? 0.4 : 1 }} />
-                        <div style={{ padding: "6px 8px 4px", display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: `1px solid ${T.line}` }}>
-                          <span style={{ fontSize: 13.5, fontWeight: 700, color: enabled ? "#fff" : touched ? T.amber : T.dim, display: "flex", alignItems: "center", gap: 4 }}>
-                            {touched && !enabled && <span style={{ width: 6, height: 6, borderRadius: "50%", background: T.amber, boxShadow: `0 0 4px ${T.amber}` }} />}
-                            {a}
-                          </span>
-                          {enabled && touched && (
-                            <button onClick={(e) => { e.stopPropagation(); if (mOff) return; updAxis(a, "hue", 0); updAxis(a, "sat", 0); }}
-                              style={{ background: "none", border: "none", cursor: "pointer", color: T.faint, fontSize: 12, padding: 0, lineHeight: 1 }} title="此軸重設">✕</button>
-                          )}
-                        </div>
-                        <div style={{ padding: "6px 8px 8px", display: "flex", flexDirection: "column", gap: 6, pointerEvents: enabled ? "auto" : "none" }}>
-                          {/* Hue Slider */}
-                          <div>
-                            <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12.5, marginBottom: 2 }}>
-                              <span style={{ color: enabled ? T.faint : "rgba(255,255,255,0.22)" }}>H</span>
-                              <span style={{ color: axObj.hue ? T.blue : (enabled ? T.faint : "rgba(255,255,255,0.18)"), fontFamily: fMono }}>{axObj.hue > 0 ? "+" + axObj.hue : axObj.hue}</span>
-                            </div>
-                            <input type="range" min={-99} max={99} value={axObj.hue} disabled={isSlDisabled}
-                              onChange={(e) => updAxis(a, "hue", parseInt(e.target.value))}
-                              onClick={(e) => e.stopPropagation()} onMouseDown={startDrag} onTouchStart={startDrag} onMouseUp={endDrag} onTouchEnd={endDrag}
-                              className="tr-sl"
-                              style={{ 
-                                "--p": ((axObj.hue + 99) / 198) * 100 + "%", 
-                                height: 3, 
-                                width: "100%", 
-                                cursor: isSlDisabled ? "not-allowed" : "pointer",
-                                background: isSlDisabled 
-                                  ? "#2d3238" 
-                                  : `linear-gradient(90deg, ${T.blue} ${((axObj.hue + 99) / 198) * 100}%, #33393f ${((axObj.hue + 99) / 198) * 100}%)` 
-                              }} />
-                          </div>
-                          {/* Sat Slider */}
-                          <div>
-                            <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12.5, marginBottom: 2 }}>
-                              <span style={{ color: enabled ? T.faint : "rgba(255,255,255,0.22)" }}>S</span>
-                              <span style={{ color: axObj.sat ? T.amber : (enabled ? T.faint : "rgba(255,255,255,0.18)"), fontFamily: fMono }}>{axObj.sat > 0 ? "+" + axObj.sat : axObj.sat}</span>
-                            </div>
-                            <input type="range" min={-99} max={99} value={axObj.sat} disabled={isSlDisabled}
-                              onChange={(e) => updAxis(a, "sat", parseInt(e.target.value))}
-                              onClick={(e) => e.stopPropagation()} onMouseDown={startDrag} onTouchStart={startDrag} onMouseUp={endDrag} onTouchEnd={endDrag}
-                              className="tr-sl"
-                              style={{ 
-                                "--p": ((axObj.sat + 99) / 198) * 100 + "%", 
-                                height: 3, 
-                                width: "100%", 
-                                cursor: isSlDisabled ? "not-allowed" : "pointer",
-                                background: isSlDisabled 
-                                  ? "#2d3238" 
-                                  : `linear-gradient(90deg, ${T.amber} ${((axObj.sat + 99) / 198) * 100}%, #33393f ${((axObj.sat + 99) / 198) * 100}%)` 
-                              }} />
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            ) : multiStyle === "fader" ? (
-              /* === 推桿台:16 軸彩色直立雙推桿 (Spectrum Fader Console) ===
-                 [設計決策] 每軸並排兩根直立推桿:左 S(飽和,染該軸色相)、右 H(色相,藍)。
-                 原本 Hue 是推桿下方的窄橫桿(命中區 ~28px,難操控),改為雙直立推桿後命中區=滿高 150px,
-                 且 S/H 視覺語言統一,符合混音台隱喻。 */
-              <div 
-                onClick={(e) => { if (!mOff) setSelAxis(null); }}
-                style={{ width: "100%", display: "flex", flexDirection: "column", gap: 12 }}
-              >
-                <div onClick={(e) => { e.stopPropagation(); }} style={{ fontSize: 14, color: T.dim, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                  <span>每軸兩根推桿:<span style={{ color: T.amber }}>S</span> 飽和度、<span style={{ color: T.blue }}>H</span> 色相;往上 = 加、往下 = 減(中線 = 0)。</span>
-                  <button onClick={() => upd("axes", DEF_AXES())} disabled={mOff}
-                    style={{ background: "none", border: "none", color: mOff ? T.faint : T.blue, cursor: mOff ? "default" : "pointer", fontSize: 14, fontFamily: fUI, padding: 0 }}>
-                    全部重設歸零
-                  </button>
-                </div>
-                {/* 主控台 */}
-                <div 
-                  onClick={(e) => { if (!mOff) setSelAxis(null); }}
-                  style={{ position: "relative", background: "linear-gradient(180deg,#15181c,#0c0e11)", border: `1px solid ${T.line}`, borderRadius: 10, padding: "14px 12px 12px", boxShadow: "inset 0 1px 0 rgba(255,255,255,0.04)", overflowX: "auto" }}
-                >
-                  <div style={{ display: "flex", gap: 24, minWidth: "fit-content", justifyContent: "center", alignItems: "center", margin: "0 auto" }}>
-                    {AXIS16.map((a) => {
-                      const axObj = st.axes[a];
-                      const isSel = selAxis === a;
-                      const touched = axObj.hue !== 0 || axObj.sat !== 0;
-                      const ang = angUI[a];
-                      const [r, g, b] = hsv2rgb(ang, 0.9, 0.95);
-                      const col = `rgb(${r * 255},${g * 255},${b * 255})`;
-                      // [C] 有調整過時,未調整且未選中的欄位降存在感
-                      const dim = anyTouched && !touched && !isSel;
-                      return (
-                        <div key={a} onClick={(e) => { e.stopPropagation(); if (!mOff) setSelAxis(a); }}
-                          style={{ flex: "1 0 58px", maxWidth: 76, display: "flex", flexDirection: "column", alignItems: "center", gap: 5, cursor: mOff ? "default" : "pointer",
-                            padding: "4px 3px 6px", borderRadius: 7, background: isSel ? "rgba(30,155,240,0.10)" : "transparent", border: `1px solid ${isSel ? T.blue : "transparent"}`,
-                            opacity: dim ? 0.45 : 1, transition: "opacity .2s" }}>
-                          {/* 數值列 S / H */}
-                          <div style={{ display: "flex", gap: 8, height: 13 }}>
-                            <span style={{ fontFamily: fMono, fontSize: 10.5, color: axObj.sat ? T.amber : T.faint }}>{axObj.sat > 0 ? "+" + axObj.sat : axObj.sat}</span>
-                            <span style={{ fontFamily: fMono, fontSize: 10.5, color: axObj.hue ? T.blue : T.faint }}>{axObj.hue > 0 ? "+" + axObj.hue : axObj.hue}</span>
-                          </div>
-                          {/* 雙推桿 */}
-                          <div style={{ display: "flex", gap: 4 }}>
-                            <VFader axis={a} kind="sat" val={axObj.sat} fillColor={col} mOff={mOff} updAxis={updAxis} startDrag={startDrag} endDrag={endDrag} />
-                            <VFader axis={a} kind="hue" val={axObj.hue} fillColor={"#3da0ff"} mOff={mOff} updAxis={updAxis} startDrag={startDrag} endDrag={endDrag} />
-                          </div>
-                          {/* S / H 標示 */}
-                          <div style={{ display: "flex", gap: 4, fontFamily: fMono, fontSize: 9 }}>
-                            <span style={{ width: 22, textAlign: "center", color: T.amber }}>S</span>
-                            <span style={{ width: 22, textAlign: "center", color: T.blue }}>H</span>
-                          </div>
-                          {/* 軸標籤 + 色點;[A] 調過的軸名前綴實心點 */}
-                          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 2, marginTop: 1 }}>
-                            <span style={{ width: 16, height: 4, borderRadius: 2, background: col, boxShadow: touched ? `0 0 5px ${col}` : "none" }} />
-                            <span style={{ fontFamily: fMono, fontSize: 11.5, fontWeight: 700, color: isSel ? "#fff" : touched ? T.amber : T.dim, display: "flex", alignItems: "center", gap: 3 }}>
-                              {touched && !isSel && <span style={{ width: 6, height: 6, borderRadius: "50%", background: T.amber, boxShadow: `0 0 4px ${T.amber}` }} />}
-                              {a}
-                            </span>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                  {/* 底部反光 */}
-                  <div style={{ height: 8, marginTop: 4, borderRadius: 4, background: "linear-gradient(180deg, rgba(255,255,255,0.05), transparent)" }} />
-                </div>
-              </div>
-            ) : (
-              /* === 色卡矩陣 2x8 卡片視圖 === */
-              <div 
-                onClick={(e) => { if (!mOff) setSelAxis(null); }}
-                style={{ width: "100%", display: "flex", flexDirection: "column", gap: 12 }}
-              >
-                <div onClick={(e) => { e.stopPropagation(); }} style={{ fontSize: 14, color: T.dim, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                  {/* 2026-06-16 修改註記：配合 6 軸調整，標題改為 6 軸色彩等化器 */}
-                  <span>6 軸色彩等化器 — 在卡片內直接調整，或點擊選中當前軸：</span>
-                  <button onClick={() => upd("axes", DEF_AXES())} disabled={mOff}
-                    style={{ background: "none", border: "none", color: mOff ? T.faint : T.blue, cursor: mOff ? "default" : "pointer", fontSize: 14, fontFamily: fUI, padding: 0 }}>
-                    全部重設歸零
-                  </button>
-                </div>
-                <div 
-                  onClick={(e) => { if (!mOff) setSelAxis(null); }}
-                  style={{ display: "grid", gridTemplateColumns: "repeat(6, 1fr)", gap: 10, width: "100%", boxSizing: "border-box" }}
-                >
-                  {AXIS16.map((a) => {
-                    const axObj = st.axes[a];
-                    const touched = axObj.hue !== 0 || axObj.sat !== 0;
-                    const isSel = selAxis === a;
-                    const ang = angUI[a];
-                    const [r, g, b] = hsv2rgb(ang, 0.85, 0.95);
-                    // [C] 有調整過時,未調整且未選中的卡片降存在感
-                    const dim = anyTouched && !touched && !isSel;
-                    return (
-                      <div key={a}
-                        onClick={(e) => { e.stopPropagation(); if (!mOff) setSelAxis(a); }}
-                        style={{
-                          background: T.panel2,
-                          border: `1.5px solid ${isSel ? T.blue : touched ? T.amber : T.line2}`,
-                          borderRadius: 8, overflow: "hidden", display: "flex", flexDirection: "column",
-                          cursor: mOff ? "default" : "pointer", transition: "all 0.15s", boxSizing: "border-box",
-                          opacity: dim ? 0.5 : 1, boxShadow: touched && !isSel ? `0 0 8px ${T.amber}55` : "none"
-                        }}>
-                        <div style={{ height: 6, background: `rgb(${r*255},${g*255},${b*255})` }} />
-                        <div style={{ padding: "6px 8px 4px", display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: `1px solid ${T.line}` }}>
-                          <span style={{ fontSize: 14, fontWeight: 700, color: isSel ? "#fff" : touched ? T.amber : T.dim, display: "flex", alignItems: "center", gap: 4 }}>
-                            {touched && !isSel && <span style={{ width: 6, height: 6, borderRadius: "50%", background: T.amber, boxShadow: `0 0 4px ${T.amber}` }} />}
-                            {a}
-                          </span>
-                          {touched && (
-                            <button onClick={(e) => { e.stopPropagation(); if (mOff) return; updAxis(a, "hue", 0); updAxis(a, "sat", 0); }}
-                              style={{ background: "none", border: "none", cursor: "pointer", color: T.faint, fontSize: 13, padding: 0, lineHeight: 1 }} title="此軸重設">✕</button>
-                          )}
-                        </div>
-                        <div style={{ padding: "8px 8px 10px", display: "flex", flexDirection: "column", gap: 6 }}>
-                          <div>
-                            <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, marginBottom: 2 }}>
-                              <span style={{ color: T.faint }}>H</span>
-                              <span style={{ color: axObj.hue ? T.blue : T.faint, fontFamily: fMono }}>{axObj.hue > 0 ? "+" + axObj.hue : axObj.hue}</span>
-                            </div>
-                            <input type="range" min={-99} max={99} value={axObj.hue} disabled={mOff}
-                              onChange={(e) => updAxis(a, "hue", parseInt(e.target.value))}
-                              onClick={(e) => e.stopPropagation()} onMouseDown={startDrag} onTouchStart={startDrag} onMouseUp={endDrag} onTouchEnd={endDrag}
-                              className="tr-sl"
-                              style={{ "--p": ((axObj.hue + 99) / 198) * 100 + "%", height: 3, width: "100%", cursor: mOff ? "not-allowed" : "pointer",
-                                background: `linear-gradient(90deg, ${T.blue} ${((axObj.hue + 99) / 198) * 100}%, #33393f ${((axObj.hue + 99) / 198) * 100}%)` }} />
-                          </div>
-                          <div>
-                            <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, marginBottom: 2 }}>
-                              <span style={{ color: T.faint }}>S</span>
-                              <span style={{ color: axObj.sat ? T.amber : T.faint, fontFamily: fMono }}>{axObj.sat > 0 ? "+" + axObj.sat : axObj.sat}</span>
-                            </div>
-                            <input type="range" min={-99} max={99} value={axObj.sat} disabled={mOff}
-                              onChange={(e) => updAxis(a, "sat", parseInt(e.target.value))}
-                              onClick={(e) => e.stopPropagation()} onMouseDown={startDrag} onTouchStart={startDrag} onMouseUp={endDrag} onTouchEnd={endDrag}
-                              className="tr-sl"
-                              style={{ "--p": ((axObj.sat + 99) / 198) * 100 + "%", height: 3, width: "100%", cursor: mOff ? "not-allowed" : "pointer",
-                                background: `linear-gradient(90deg, ${T.amber} ${((axObj.sat + 99) / 198) * 100}%, #33393f ${((axObj.sat + 99) / 198) * 100}%)` }} />
-                          </div>
-                        </div>
+                      <div key={a} style={{
+                        position: "relative", width: 168, boxSizing: "border-box", padding: "12px 8px 10px",
+                        background: touched ? "rgba(245,166,35,0.05)" : "rgba(255,255,255,0.02)",
+                        border: `1.5px solid ${touched ? T.amber : T.line2}`, borderRadius: 14,
+                        transform: `translateY(${i % 2 === 0 ? -12 : 14}px)`,
+                        transition: "transform 0.3s cubic-bezier(0.16,1,0.3,1), border-color 0.25s, box-shadow 0.25s",
+                        boxShadow: touched ? `0 0 22px ${col}30` : "none"
+                      }}>
+                        {touched && (
+                          <button onClick={() => { if (mOff) return; updAxis(a, "hue", 0); updAxis(a, "sat", 0); }}
+                            title="此軸歸零"
+                            style={{ position: "absolute", top: -7, right: -7, width: 18, height: 18, borderRadius: "50%", background: T.amber, border: "2px solid #0e1114", cursor: "pointer", color: "#000", fontSize: 10, fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center", zIndex: 5, boxShadow: "0 1px 4px rgba(0,0,0,0.5)" }}>✕</button>
+                        )}
+                        <ColorGauge label={a} gain={axObj.sat} hue={axObj.hue} col={col} disabled={mOff}
+                          onGain={(v) => updAxis(a, "sat", v)} onHue={(v) => updAxis(a, "hue", v)}
+                          startDrag={startDrag} endDrag={endDrag} />
                       </div>
                     );
                   })}
@@ -2130,12 +2144,9 @@ export default function App() {
         <div id="aver-control-params-detail">
           <BlockHeader 
             title="Detail" 
-            sub="輪廓銳利度 (訊號級高頻銳化)" 
-            right={<Toggle on={st.detailOn} onChange={(v) => upd("detailOn", v)} label={st.detailOn ? "ON" : "OFF"} />} 
           />
-          <div style={{ opacity: st.detailOn ? 1 : 0.35, pointerEvents: st.detailOn ? "auto" : "none", maxWidth: 380 }}>
+          <div style={{ maxWidth: 380 }}>
             <Slider k="detail" label="Level" hint="" min={-7} max={7} val={st.detail} onChange={(v) => upd("detail", v)} onStartDrag={startDrag} onEndDrag={endDrag} />
-            <CrossHint>影像處理頁面另有主 Sharpness (0-3) 基本銳利度，兩者將會疊加作用。</CrossHint>
           </div>
         </div>
       );
@@ -2146,10 +2157,8 @@ export default function App() {
         <div id="aver-control-params-knee">
           <BlockHeader 
             title="Knee" 
-            sub="高光壓縮 — 壓抑過度曝光的白色區域，保留高光細節" 
-            right={<Toggle on={st.kneeOn} onChange={(v) => upd("kneeOn", v)} label={st.kneeOn ? "ON" : "OFF"} />} 
           />
-          <div style={{ opacity: st.kneeOn ? 1 : 0.35, pointerEvents: st.kneeOn ? "auto" : "none", maxWidth: 420 }}>
+          <div style={{ maxWidth: 420 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14 }}>
               <Toggle on={st.autoKnee} onChange={(v) => upd("autoKnee", v)} label="Auto Knee" />
               {st.autoKnee && (
@@ -2172,10 +2181,9 @@ export default function App() {
               )}
             </div>
             <div style={{ opacity: st.autoKnee ? 0.35 : 1, pointerEvents: st.autoKnee ? "none" : "auto" }}>
-              <Slider k="kneePoint" label="Point" hint="壓縮起始點" min={75} max={105} val={st.kneePoint} onChange={(v) => upd("kneePoint", v)} neutral={95} onStartDrag={startDrag} onEndDrag={endDrag} />
-              <Slider k="kneeSlope" label="Slope" hint="壓縮斜率" min={-5} max={5} val={st.kneeSlope} onChange={(v) => upd("kneeSlope", v)} onStartDrag={startDrag} onEndDrag={endDrag} />
+              <Slider k="kneePoint" label="Point" hint="" min={75} max={105} val={st.kneePoint} onChange={(v) => upd("kneePoint", v)} neutral={95} onStartDrag={startDrag} onEndDrag={endDrag} />
+              <Slider k="kneeSlope" label="Slope" hint="" min={-5} max={5} val={st.kneeSlope} onChange={(v) => upd("kneeSlope", v)} onStartDrag={startDrag} onEndDrag={endDrag} />
             </div>
-            <Note>調整時建議切換至波形圖，觀察亮部 (90-100%) 的訊號壓縮變化。Auto Knee 開啟時將由相機晶片自動調節。</Note>
           </div>
         </div>
       );
@@ -2184,10 +2192,9 @@ export default function App() {
     if (block === "black") {
       return (
         <div id="aver-control-params-black">
-          <BlockHeader title="Black Level" sub="黑位準 — 設定圖像的黑電平與暗部對比" />
+          <BlockHeader title="Black Level" />
           <div style={{ maxWidth: 380 }}>
             <Slider k="black" label="Level" hint="" min={-50} max={50} val={st.black} onChange={(v) => upd("black", v)} onStartDrag={startDrag} onEndDrag={endDrag} />
-            <Note>負值將加深黑位並提高對比；正值則能提起暗部層次。調整時請注意黑位不應低於 0% 臨界線。</Note>
           </div>
         </div>
       );
@@ -2196,10 +2203,137 @@ export default function App() {
   // ==========================================================================
   // E. 佈局架構與 UI 樹 (Page Layout & Main DOM Trees)
   // ==========================================================================
+  // ---- Paint/Look 可重用片段(經典 / 劇院 兩種版面共用,避免重複)----
+  const paintMonitor = () => (
+    <div style={{ position: "relative", borderRadius: 10, overflow: "hidden", border: `1px solid ${T.line}`, background: "#000", flex: 1, minHeight: 0, width: "100%", boxSizing: "border-box", display: "flex", alignItems: "center", justifyContent: "center" }}>
+      <canvas ref={preRef} width={SW} height={SH} style={{ width: "100%", height: "100%", display: "block", objectFit: "contain" }} />
+      <span style={{ position: "absolute", left: 12, top: 10, fontFamily: fMono, fontSize: 14, color: "rgba(255,255,255,.9)", textShadow: "0 1px 2px #000", fontWeight: 600, zIndex: 20 }}>{bypass ? "● BYPASS" : "● LIVE(模擬畫面)"}</span>
+      <button onMouseDown={() => setBypass(true)} onMouseUp={() => setBypass(false)} onMouseLeave={() => setBypass(false)} onTouchStart={() => setBypass(true)} onTouchEnd={() => setBypass(false)}
+        style={{ position: "absolute", right: 12, top: 10, padding: "4px 10px", fontSize: 14, cursor: "pointer", borderRadius: 5, border: bypass ? `1px solid ${T.blue}` : "1px solid rgba(255,255,255,0.25)", background: bypass ? "rgba(30,155,240,0.85)" : "rgba(22,24,27,0.65)", color: bypass ? "#fff" : "rgba(255,255,255,0.9)", fontFamily: fUI, backdropFilter: "blur(4px)", transition: "all .15s", zIndex: 20 }}>
+        {bypass ? "原始畫面" : "按住看原始"}
+      </button>
+      <div style={{ position: "absolute", left: 12, bottom: 12, height: 38, boxSizing: "border-box", background: "rgba(22, 24, 27, 0.75)", border: `1px solid ${T.line}`, borderRadius: 8, padding: "0 12px", display: "flex", alignItems: "center", gap: 12, backdropFilter: "blur(4px)", zIndex: 20 }}>
+        <span style={{ fontSize: 14, color: "rgba(255,255,255,0.9)", fontWeight: 600 }}>監看</span>
+        <Toggle on={showScope} onChange={setShowScope} />
+        {showScope && (
+          <div style={{ display: "flex", background: "#101216", border: `1px solid ${T.line}`, borderRadius: 6, padding: 3, gap: 4, alignItems: "center" }}>
+            {[["vector", "向量"], ["wave", "波形"], ["hist", "直方圖"]].map(([id, lb]) => (
+              <button key={id} onClick={() => setScope(id)} style={{ padding: "4px 10px", fontSize: 14, cursor: "pointer", borderRadius: 4, border: "none", background: scope === id ? T.blue : "transparent", color: scope === id ? "#fff" : T.dim, fontFamily: fUI }}>{lb}</button>
+            ))}
+          </div>
+        )}
+      </div>
+      {showScope && (
+        <div style={{ position: "absolute", right: 12, bottom: 12, zIndex: 20, borderRadius: 6, overflow: "hidden", border: `1px solid ${T.line}`, boxShadow: "0 4px 12px rgba(0,0,0,0.5)", background: "rgba(8,12,10,0.95)", display: "flex", flexDirection: "column", alignItems: "center", padding: "4px" }}>
+          <canvas ref={scRef} width={scope === "vector" ? 140 : 190} height={140} style={{ display: "block", borderRadius: 4 }} />
+          <div style={{ fontSize: 14, color: T.dim, marginTop: 3, fontFamily: fUI, textAlign: "center" }}>{scope === "vector" ? "向量示波器 (膚色線)" : scope === "wave" ? "波形圖 (0-100%)" : "RGB 直方圖 (暗→亮)"}</div>
+        </div>
+      )}
+    </div>
+  );
+  const paintSceneTiles = () => (
+    <>
+      <SceneTile thumb={stdThumb} name="AVer" factory active={activeScene === "std"} dirty={isDirty} onLoad={loadStandard} />
+      {scenes.map((s) => (
+        <SceneTile key={s.id} thumb={s.thumb} name={s.name} remark={s.remark} active={activeScene === s.id} dirty={isDirty} onLoad={() => loadScene(s)} onEdit={() => { setEditingScene(s.id); setEdName(s.name); setEdRemark(s.remark || ""); setSaveOpen(false); }} onDelete={() => setDeletingScene(s)} />
+      ))}
+    </>
+  );
+  const paintBlockNav = (horizontal) => (
+    <div style={{ display: "flex", flexDirection: horizontal ? "row" : "column", gap: 8, flexWrap: horizontal ? "wrap" : "nowrap" }}>
+      {BLOCKS.map(([id, lb]) => (
+        <button key={id} onClick={() => setBlock(id)} style={{ textAlign: "left", padding: "10px 14px", cursor: "pointer", borderRadius: 7, border: `1.5px solid ${block === id ? T.blue : T.line2}`, background: block === id ? "rgba(30,155,240,0.12)" : T.panel2, transition: "all 0.28s cubic-bezier(0.16, 1, 0.3, 1)", boxSizing: "border-box", flex: horizontal ? "0 0 auto" : "none", width: horizontal ? "auto" : "100%", boxShadow: block === id ? `0 0 14px rgba(30,155,240,0.25)` : "none" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, justifyContent: "space-between" }}>
+            <span style={{ fontSize: 14.5, color: block === id ? T.blue : T.text, fontWeight: block === id ? 600 : 500 }}>{lb}</span>
+            <span style={{ width: 7, height: 7, borderRadius: 4, background: blockActive(id) ? T.green : T.line2 }} />
+          </div>
+        </button>
+      ))}
+    </div>
+  );
+  const paintSaveActions = () => (
+    <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+      {isDirty && activeScene !== "std" && activeScene != null && (
+        <button onClick={() => { const s = scenes.find((x) => x.id === activeScene); if (s) updateScene(s); }} style={{ padding: "6px 14px", fontSize: 14, fontWeight: 600, cursor: "pointer", borderRadius: 6, border: `1px solid ${T.blueDark}`, background: "rgba(30,155,240,0.12)", color: T.blue, fontFamily: fUI }}>覆寫當前場景</button>
+      )}
+      {isDirty && (
+        <button onClick={() => { setSt(JSON.parse(JSON.stringify(getActiveSceneData()))); setIsFocused(false); setSaveOpen(false); flash(activeScene === "std" ? "已回復為原廠預設值" : "已回復到此場景的存檔狀態"); }} style={{ padding: "6px 14px", fontSize: 14, fontWeight: 600, cursor: "pointer", borderRadius: 6, border: `1px solid ${T.line2}`, background: "transparent", color: T.dim, fontFamily: fUI }}>回復到改動前</button>
+      )}
+      <button onClick={() => { setSaveOpen((v) => !v); setEditingScene(null); setScName(""); setScRemark(""); }} disabled={!isDirty || scenes.length >= 16} style={{ padding: "6px 14px", fontSize: 14, fontWeight: 600, cursor: (!isDirty || scenes.length >= 16) ? "not-allowed" : "pointer", borderRadius: 6, border: "none", background: (!isDirty || scenes.length >= 16) ? "rgba(255, 255, 255, 0.08)" : T.blue, color: (!isDirty || scenes.length >= 16) ? T.faint : "#fff", fontFamily: fUI, opacity: (!isDirty || scenes.length >= 16) ? 0.45 : 1 }}>另存為新場景</button>
+    </div>
+  );
+  const paintSceneState = () => (
+    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+      <span style={{ fontSize: 14, fontWeight: 600, color: T.dim }}>當前場景狀態：</span>
+      <span style={{ fontSize: 14, fontWeight: 700, color: activeScene === "std" ? T.blue : T.text, background: activeScene === "std" ? "rgba(30,155,240,0.1)" : "rgba(255,255,255,0.06)", padding: "4px 10px", borderRadius: 6, border: `1px solid ${activeScene === "std" ? "rgba(30,155,240,0.2)" : T.line}` }}>
+        {activeScene === "std" ? "AVer (原廠預設)" : (scenes.find((x) => x.id === activeScene)?.name || "自訂場景")}
+      </span>
+      {isDirty && (<span style={{ fontSize: 14, fontWeight: 600, color: T.amber, background: "rgba(245,166,35,0.1)", padding: "3px 8px", borderRadius: 4, border: `1px solid rgba(245,166,35,0.2)` }}>● 已修改未儲存</span>)}
+    </div>
+  );
+  // 版面切換鈕(經典 / 劇院) - 滑塊式過渡動畫版
+  const paintLayoutToggle = () => {
+    const isClassic = paintLayout === "classic";
+    return (
+      <div style={{ position: "relative", display: "flex", background: "#101216", border: `1px solid ${T.line}`, borderRadius: 8, padding: 3, gap: 0, userSelect: "none" }}>
+        {/* 滑動藍色背景指示器 */}
+        <div style={{
+          position: "absolute",
+          top: 3,
+          bottom: 3,
+          left: isClassic ? 3 : "calc(50% + 1.5px)",
+          width: "calc(50% - 4.5px)",
+          background: T.blue,
+          borderRadius: 6,
+          transition: "all 0.35s cubic-bezier(0.25, 1, 0.5, 1)",
+          zIndex: 1
+        }} />
+        {[["classic", "經典版面"], ["cinema", "劇院版面"]].map(([id, lb]) => {
+          const active = paintLayout === id;
+          return (
+            <button key={id} onClick={() => setPaintLayout(id)} style={{ 
+              position: "relative",
+              padding: "6px 16px", 
+              fontSize: 13, 
+              fontWeight: 600, 
+              cursor: "pointer", 
+              borderRadius: 6, 
+              border: "none", 
+              background: "transparent", 
+              color: active ? "#fff" : T.dim, 
+              fontFamily: fUI, 
+              transition: "color 0.35s ease",
+              zIndex: 2,
+              width: 88,
+              textAlign: "center"
+            }}>{lb}</button>
+          );
+        })}
+      </div>
+    );
+  };
+
   return (
     <div id="aver-paint-look-root" style={{ position: "relative", background: T.page, width: "100%", height: "100vh", fontFamily: fUI, color: T.text, display: "flex", overflow: "hidden" }}>
       {/* 注入控制滑桿樣式與色環旋轉動畫 */}
       <style>{`
+        /* 佈局切換變形過渡動畫 */
+        @keyframes averClassicEntrance {
+          0% { opacity: 0; transform: scale(0.97) translateY(12px); filter: blur(4px); }
+          100% { opacity: 1; transform: scale(1) translateY(0); filter: blur(0); }
+        }
+        .aver-classic-layout-entrance {
+          animation: averClassicEntrance 0.5s cubic-bezier(0.16, 1, 0.3, 1) both;
+        }
+
+        @keyframes averCinemaEntrance {
+          0% { opacity: 0; transform: scale(1.03) translateY(-8px); filter: blur(4px); }
+          100% { opacity: 1; transform: scale(1) translateY(0); filter: blur(0); }
+        }
+        .aver-cinema-layout-entrance {
+          animation: averCinemaEntrance 0.5s cubic-bezier(0.16, 1, 0.3, 1) both;
+        }
+
         /* 全域自訂滾動條樣式，使其融入暗色主題 */
         * {
           scrollbar-width: thin;
@@ -2340,11 +2474,11 @@ export default function App() {
       `}</style>
 
       {/* 側邊導覽欄 (AVer WebUI Sidebar Template) */}
-      <div id="aver-sidebar-container" style={{ width: 220, background: T.side, flexShrink: 0, paddingTop: 20, display: "flex", flexDirection: "column", height: "100vh", boxSizing: "border-box" }}>
+      <div id="aver-sidebar-container" style={{ width: 220, background: T.side, flexShrink: 0, paddingTop: 20, display: "flex", flexDirection: "column", height: "100vh", boxSizing: "border-box", overflowY: "auto" }}>
         <div style={{ padding: "4px 24px 20px", fontWeight: 700, fontSize: 22, fontStyle: "italic", letterSpacing: 0.5, color: "#fff" }}>AVer</div>
         {[
           ["Live View", "live", false], 
-          ["Camera Settings", "camera", false], 
+          ["Camera Settings", "camera", true], 
           ["Paint / Look", "paint", true], 
           ["Video & Audio", "video", true], 
           ["Network", "network", false], 
@@ -2372,19 +2506,51 @@ export default function App() {
             </div>
           );
         })}
+        {activeMenu === "camera" && (
+          <div className="aver-fade" style={{ margin: "8px 0 0", padding: "12px 18px 16px", borderTop: `1px solid ${T.line}`, display: "flex", flexDirection: "column", gap: 12 }}>
+            <div style={{ fontSize: 12, letterSpacing: 1, color: T.faint, fontWeight: 600, textTransform: "uppercase" }}>Tracking Control</div>
+            <div style={{ display: "flex", alignItems: "center", gap: 0 }}>
+              <span style={{ fontSize: 13, color: T.dim, width: 60, flexShrink: 0 }}>Tracking</span>
+              <div style={{ display: "flex", gap: 24 }}>
+                <span style={{ width: 44 }}><CamRadio label="On" checked={trackOn} onChange={() => setTrackOn(true)} /></span>
+                <CamRadio label="Off" checked={!trackOn} onChange={() => setTrackOn(false)} />
+              </div>
+            </div>
+            <div style={{ display: "flex", alignItems: "flex-start", gap: 0 }}>
+              <span style={{ fontSize: 13, color: T.dim, width: 60, flexShrink: 0, paddingTop: 1 }}>Mode</span>
+              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                {[["presenter", "Presenter"], ["zone", "Zone"], ["hybrid", "Hybrid"], ["framing", "Framing"]].map(([id, lb]) => (
+                  <CamRadio key={id} label={lb} checked={trackMode === id} onChange={() => setTrackMode(id)} />
+                ))}
+              </div>
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: 0 }}>
+              <span style={{ fontSize: 13, color: T.dim, width: 60, flexShrink: 0 }}>TrkFace</span>
+              <div style={{ display: "flex", gap: 24 }}>
+                <span style={{ width: 44 }}><CamRadio label="On" checked={trkFace} onChange={() => setTrkFace(true)} /></span>
+                <CamRadio label="Off" checked={!trkFace} onChange={() => setTrkFace(false)} />
+              </div>
+            </div>
+            <button style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8, padding: "9px 0", fontSize: 13, cursor: "pointer", borderRadius: 6, border: `1px solid ${T.line2}`, background: T.panel2, color: T.text, fontFamily: fUI, marginTop: 2 }}>
+              ⊕ Click Track
+            </button>
+          </div>
+        )}
         <div style={{ margin: "auto 16px 20px", padding: "12px 14px", borderRadius: 8, background: "rgba(30,155,240,0.06)", border: `1px solid ${T.line}`, fontSize: 14, color: T.faint, lineHeight: 1.6 }}>
-          原型示意: 點擊選單切換 Video & Audio 與 Paint / Look。
+          原型示意: 點擊選單切換 Camera Settings、Video & Audio 與 Paint / Look。
         </div>
       </div>
 
       {/* 主工作區 (Main Stage Panel) */}
-      <div id="aver-main-stage" style={{ flex: 1, padding: "16px 24px", minWidth: 0, background: T.page, overflow: "hidden", height: "100vh", display: "flex", flexDirection: "column", boxSizing: "border-box" }}>
+      <div id="aver-main-stage" style={{ position: "relative", flex: 1, padding: "16px 24px", minWidth: 0, background: T.page, overflow: "hidden", height: "100vh", display: "flex", flexDirection: "column", boxSizing: "border-box" }}>
         {activeMenu === "paint" ? (
           <div id="aver-content-wrapper" key="paint" className="aver-fade" style={{ display: "flex", flexDirection: "column", gap: 10, width: "100%", maxWidth: "1350px", margin: "0 auto", height: "100%", minHeight: 0 }}>
-          
+
+          {paintLayout === "classic" ? (
+          <div className="aver-classic-layout-entrance" style={{ display: "flex", flexDirection: "column", gap: 10, width: "100%", height: "100%", minHeight: 0 }}>
           {/* 1. LIVE 預覽與場景檔主控制台 */}
           {/* 2026-06-16 修改註記：配合各分頁面板高度一致且防止出現滾動條，預覽區 flex 比例微調為 1.15 */}
-          <div id="aver-preview-preset-panel" style={{ background: T.panel, border: `1px solid ${T.line}`, borderRadius: 10, padding: "14px 20px", display: "flex", flexDirection: "column", gap: 12, width: "100%", boxSizing: "border-box", flex: "1.15 1 0", minHeight: 0 }}>
+          <div id="aver-preview-preset-panel" style={{ background: T.panel, border: `1px solid ${T.line}`, borderRadius: 10, padding: "14px 20px", display: "flex", flexDirection: "column", gap: 12, width: "100%", boxSizing: "border-box", flex: "1.2 1 0", minHeight: 0 }}>
             
             <div id="aver-preview-preset-flex" style={{ display: "flex", gap: 10, width: "100%", flex: 1, minHeight: 0 }}>
               
@@ -2480,7 +2646,7 @@ export default function App() {
                   alignItems: "start", 
                   alignContent: "start" 
                 }}>
-                  <SceneTile thumb={stdThumb} name="Standard" factory active={activeScene === "std"} dirty={isDirty} onLoad={loadStandard} />
+                  <SceneTile thumb={stdThumb} name="AVer" factory active={activeScene === "std"} dirty={isDirty} onLoad={loadStandard} />
                   {scenes.map((s) => (
                     <SceneTile key={s.id} thumb={s.thumb} name={s.name} remark={s.remark} active={activeScene === s.id} dirty={isDirty}
                       onLoad={() => loadScene(s)}
@@ -2505,7 +2671,7 @@ export default function App() {
             gap: 0, 
             width: "100%", 
             // 2026-06-16 修改註記：配合各分頁面板高度一致，將控制區 flex 設為 1 1 0 提升高度，不使用 auto 彈性高度
-            flex: "1 1 0", 
+            flex: "0.95 1 0", 
             minHeight: 0,
             background: T.panel, 
             border: `1px solid ${T.line}`, 
@@ -2540,7 +2706,7 @@ export default function App() {
                   borderRadius: 6,
                   border: `1px solid ${activeScene === "std" ? "rgba(30,155,240,0.2)" : T.line}`
                 }}>
-                  {activeScene === "std" ? "Standard (原廠預設)" : (scenes.find((x) => x.id === activeScene)?.name || "自訂場景")}
+                  {activeScene === "std" ? "AVer (原廠預設)" : (scenes.find((x) => x.id === activeScene)?.name || "自訂場景")}
                 </span>
                 {isDirty && (
                   <span className="aver-fade" style={{ 
@@ -2671,7 +2837,7 @@ export default function App() {
                 flexDirection: "column", 
                 alignSelf: "stretch" 
               }}>
-                <div style={{ flex: 1, overflowY: "auto", minHeight: 0, paddingRight: 4, scrollbarGutter: "stable", display: "flex", flexDirection: "column" }}>
+                <div style={{ flex: 1, overflow: (block === "multi" && multiStyle === "wheel") ? "visible" : "auto", minHeight: 0, paddingRight: 4, scrollbarGutter: "stable", display: "flex", flexDirection: "column" }}>
                   {renderBlock()}
                 </div>
               </div>
@@ -2679,7 +2845,215 @@ export default function App() {
             </div>
 
           </div>
+          </div>
+          ) : (
+          /* ===== 劇院版面 (Cinema):左 Hero 預覽 + 右控制塢 + 底部場景條 ===== */
+          <div className="aver-cinema-layout-entrance" style={{ display: "flex", flexDirection: "column", gap: 10, width: "100%", height: "100%", minHeight: 0 }}>
+            <div style={{ display: "flex", gap: 10, flex: 1, minHeight: 0, width: "100%" }}>
+              {/* 左:Hero 預覽 */}
+              <div style={{ flex: "1.6 1 0", minWidth: 0, display: "flex", flexDirection: "column", background: T.panel, border: `1px solid ${T.line}`, borderRadius: 10, padding: 12, minHeight: 0, boxSizing: "border-box" }}>
+                {paintMonitor()}
+              </div>
+              {/* 右:控制塢 */}
+              <div style={{ flex: "1 1 0", minWidth: 360, maxWidth: 480, display: "flex", flexDirection: "column", background: T.panel, border: `1px solid ${T.line}`, borderRadius: 10, minHeight: 0, overflow: "hidden", boxSizing: "border-box" }}>
+                {/* 塢頂:場景狀態 + 存檔動作 */}
+                <div style={{ padding: "10px 14px", borderBottom: `1px solid ${T.line}`, background: "rgba(0,0,0,0.15)", display: "flex", flexDirection: "column", gap: 9, flexShrink: 0 }}>
+                  {paintSceneState()}
+                  {paintSaveActions()}
+                </div>
+                {/* 區塊導覽(橫向 pills) */}
+                <div style={{ padding: "12px 14px 10px", borderBottom: `1px solid ${T.line}`, flexShrink: 0, display: "flex", flexDirection: "column", gap: 8 }}>
+                  <span style={{ fontSize: 11, letterSpacing: 1, color: T.faint, fontWeight: 600, textTransform: "uppercase" }}>調整區塊</span>
+                  {paintBlockNav(true)}
+                </div>
+                {/* 控制項 */}
+                <div style={{ flex: 1, overflowY: "auto", minHeight: 0, padding: "14px", scrollbarGutter: "stable" }}>
+                  {renderBlock()}
+                </div>
+              </div>
+            </div>
+            {/* 底部:場景條(橫向) */}
+            <div style={{ flexShrink: 0, background: T.panel, border: `1px solid ${T.line}`, borderRadius: 10, padding: "10px 14px", display: "flex", alignItems: "stretch", gap: 14, boxSizing: "border-box" }}>
+              <div style={{ display: "flex", flexDirection: "column", justifyContent: "center", gap: 2, flexShrink: 0, paddingRight: 14, borderRight: `1px solid ${T.line}` }}>
+                <span style={{ fontSize: 14, fontWeight: 600, color: T.text }}>場景檔</span>
+                <span style={{ fontSize: 13, color: scenes.length >= 16 ? T.amber : T.faint, fontFamily: fMono }}>{scenes.length}/16</span>
+              </div>
+              <div style={{ display: "grid", gridAutoFlow: "column", gridAutoColumns: "150px", gap: 8, overflowX: "auto", overflowY: "hidden", flex: 1, paddingBottom: 4, alignItems: "start" }}>
+                {paintSceneTiles()}
+              </div>
+            </div>
+          </div>
+          )}
         </div>
+        ) : activeMenu === "camera" ? (
+          <div id="aver-camera-settings-wrapper" key="camera" className="aver-fade" style={{ display: "flex", flexDirection: "column", gap: 12, width: "100%", maxWidth: "1350px", margin: "0 auto", height: "100%", minHeight: 0 }}>
+            {(() => {
+              const en = EXP_ENABLED[cam.expMode];
+              const ndMul = { clear: 1, nd4: 0.72, nd16: 0.5, nd128: 0.32 }[cam.ndFilter] ?? 1;
+              const evB = (cam.expMode === "bright" ? (cam.brightVal / 31) * 1.1 + 0.45
+                : cam.expMode === "manual" ? (cam.gain / 42) * 1.0 + 0.55
+                : 1 + cam.ev * 0.13) * ndMul;
+              const previewFilter = `brightness(${evB.toFixed(2)}) contrast(${(0.7 + cam.contrast / 4 * 0.6).toFixed(2)}) saturate(${(cam.saturation / 5).toFixed(2)})`;
+              const colStyle = { flex: 1, minWidth: 0, display: "flex", flexDirection: "column" };
+              return (
+                <>
+                  {/* 預覽畫面 */}
+                  <div style={{ position: "relative", borderRadius: 10, overflow: "hidden", border: `1px solid ${T.line}`, flex: "1 1 0", minHeight: 160, background: "linear-gradient(160deg,#11151b,#05070a)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                    <img 
+                      src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxNiA5Ii8+"
+                      style={{ 
+                        width: "auto", 
+                        height: "auto", 
+                        maxWidth: "100%",
+                        maxHeight: "100%",
+                        objectFit: "contain", 
+                        backgroundImage: "url(meeting_room.png)", 
+                        backgroundSize: "cover", 
+                        backgroundPosition: "center", 
+                        filter: previewFilter, 
+                        transform: `${cam.mirror ? "scaleX(-1)" : ""} ${cam.flip ? "scaleY(-1)" : ""}`, 
+                        transition: "filter .2s ease",
+                        display: "block"
+                      }} 
+                    />
+                    <span style={{ position: "absolute", left: 12, top: 10, fontFamily: fMono, fontSize: 13, color: "rgba(255,255,255,.9)", textShadow: "0 1px 2px #000", fontWeight: 600, zIndex: 10 }}>● LIVE(模擬畫面)</span>
+                    <span style={{ position: "absolute", right: 12, top: 10, fontFamily: fMono, fontSize: 12, color: "rgba(255,255,255,.65)", textShadow: "0 1px 2px #000", zIndex: 10 }}>{EXP_MODES.find(([id]) => id === cam.expMode)[1]}</span>
+                  </div>
+
+                  {/* 控制面板 */}
+                  <div style={{ background: T.panel, border: `1px solid ${T.line}`, borderRadius: 10, flex: "0 0 auto", display: "flex", flexDirection: "column", overflow: "hidden" }}>
+                    {/* 分頁列 */}
+                    <div style={{ display: "flex", borderBottom: `1px solid ${T.line}` }}>
+                      {[["exp", "Exposure"], ["img", "Image Process"]].map(([id, lb]) => (
+                        <button key={id} onClick={() => updCam("tab", id)}
+                          style={{ flex: "0 0 200px", padding: "11px 0", fontSize: 14, fontWeight: 600, cursor: "pointer", border: "none", background: cam.tab === id ? T.blue : "transparent", color: cam.tab === id ? "#fff" : T.dim, fontFamily: fUI }}>
+                          {lb}
+                        </button>
+                      ))}
+                    </div>
+
+                    {cam.tab === "exp" ? (
+                      /* ===== Exposure 分頁 ===== */
+                      <div style={{ display: "flex", gap: 0, padding: "16px 0", alignItems: "stretch", minHeight: 280, boxSizing: "border-box" }}>
+                        {/* 模式清單 */}
+                        <div style={{ flex: "0 0 150px", display: "flex", flexDirection: "column", gap: 4, padding: "0 16px", borderRight: `1px solid ${T.line}` }}>
+                          {EXP_MODES.map(([id, lb]) => (
+                            <button key={id} onClick={() => updCam("expMode", id)}
+                              style={{ padding: "9px 12px", fontSize: 13, textAlign: "left", cursor: "pointer", borderRadius: 6, border: "none", background: cam.expMode === id ? T.blue : T.panel2, color: cam.expMode === id ? "#fff" : T.dim, fontWeight: cam.expMode === id ? 600 : 400, fontFamily: fUI }}>
+                              {lb}
+                            </button>
+                          ))}
+                        </div>
+                        {/* 欄 A */}
+                        <div style={{ ...colStyle, padding: "0 18px" }}>
+                          <div style={{ marginBottom: 15 }}>
+                            <div style={{ fontSize: 13, color: T.text, marginBottom: 6 }}>ND Filter</div>
+                            <select value={cam.ndFilter} onChange={(e) => updCam("ndFilter", e.target.value)}
+                              style={{ width: "100%", padding: "8px 10px", fontSize: 13, borderRadius: 6, border: `1px solid ${T.line2}`, background: T.panel2, color: T.text, fontFamily: fUI, cursor: "pointer" }}>
+                              <option value="nd128">ND 1/128</option>
+                              <option value="nd16">ND 1/16</option>
+                              <option value="nd4">ND 1/4</option>
+                              <option value="clear">ND Clear</option>
+                            </select>
+                          </div>
+                          <ExpSlider label="Exposure Value" leftLabel="-4" rightLabel="4" valueText={cam.ev > 0 ? "+" + cam.ev : "" + cam.ev} min={-4} max={4} val={cam.ev} onChange={(v) => updCam("ev", v)} disabled={!en.ev} />
+                          <ExpSlider label="Shutter Speed" leftLabel="1/1" rightLabel="1/10K" valueText={SHUTTER_LIST[cam.shutterIdx]} min={0} max={SHUTTER_LIST.length - 1} val={cam.shutterIdx} onChange={(v) => updCam("shutterIdx", v)} disabled={!en.shutter} />
+                          <ExpSlider label="Iris Level" leftLabel="0" rightLabel="F1.6" valueText={IRIS_LIST[cam.irisIdx]} min={0} max={IRIS_LIST.length - 1} val={cam.irisIdx} onChange={(v) => updCam("irisIdx", v)} disabled={!en.iris} />
+                        </div>
+                        {/* 欄 B */}
+                        <div style={{ ...colStyle, padding: "0 18px" }}>
+                          <ExpSlider label="Gain Level" leftLabel="0" rightLabel="42" valueText={cam.gain + "dB"} min={0} max={42} val={cam.gain} onChange={(v) => updCam("gain", v)} disabled={!en.gain} />
+                          <ExpSlider label="Gain Limit Level" leftLabel="24" rightLabel="42" valueText={cam.gainLimit + "dB"} min={24} max={42} val={cam.gainLimit} onChange={(v) => updCam("gainLimit", v)} disabled={!en.gainLimit} />
+                          <ExpSlider label="BLC" leftLabel="Off" rightLabel="On" valueText={cam.blc ? "On" : "Off"} min={0} max={1} val={cam.blc} onChange={(v) => updCam("blc", v)} disabled={!en.blc} accent={T.amber} />
+                        </div>
+                        {/* 欄 C */}
+                        <div style={{ ...colStyle, padding: "0 18px", justifyContent: "space-between" }}>
+                          <div>
+                            <CamCheck label="Slow Shutter" checked={cam.slowShutter} onChange={(v) => updCam("slowShutter", v)} disabled={!en.slow} />
+                            <CamCheck label="WDR" checked={cam.wdr} onChange={(v) => updCam("wdr", v)} disabled={!en.wdr} />
+                            <ExpSlider label="Bright Value" leftLabel="0" rightLabel="31" valueText={"" + cam.brightVal} min={0} max={31} val={cam.brightVal} onChange={(v) => updCam("brightVal", v)} disabled={!en.bright} />
+                          </div>
+                          <div style={{ display: "flex", justifyContent: "flex-end" }}>
+                            <button onClick={() => setCam({ ...CAM_DEFAULTS, tab: "exp" })}
+                              style={{ padding: "8px 22px", fontSize: 13, cursor: "pointer", borderRadius: 6, border: `1px solid ${T.line2}`, background: T.panel2, color: T.text, fontFamily: fUI }}>
+                              Default
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    ) : (
+                      /* ===== Image Process 分頁(對照實機) ===== */
+                      <div style={{ display: "flex", gap: 0, padding: "16px 0", minHeight: 280, boxSizing: "border-box" }}>
+                        {/* 第 1 欄:White Balance + R/B Gain + One Push */}
+                        <div style={{ ...colStyle, padding: "0 18px", borderRight: `1px solid ${T.line}` }}>
+                          <div style={{ fontSize: 12, color: T.faint, fontWeight: 600, marginBottom: 8 }}>White Balance</div>
+                          <select value={cam.wbMode} onChange={(e) => updCam("wbMode", e.target.value)}
+                            style={{ width: "100%", padding: "8px 10px", fontSize: 13, borderRadius: 6, border: `1px solid ${T.line2}`, background: T.panel2, color: T.text, fontFamily: fUI, marginBottom: 14, cursor: "pointer" }}>
+                            <option value="auto">AWB</option>
+                            <option value="indoor">Indoor</option>
+                            <option value="outdoor">Outdoor</option>
+                            <option value="onepush">One Push</option>
+                            <option value="manual">Manual</option>
+                          </select>
+                          <div style={{ display: "flex", gap: 16 }}>
+                            <div style={{ flex: 1 }}>
+                              <ExpSlider label="R Gain" leftLabel="0" rightLabel="255" valueText={"" + cam.rGain} min={0} max={255} val={cam.rGain} onChange={(v) => updCam("rGain", v)} disabled={cam.wbMode === "auto"} accent={"#ff6b6b"} />
+                            </div>
+                            <div style={{ flex: 1 }}>
+                              <ExpSlider label="B Gain" leftLabel="0" rightLabel="255" valueText={"" + cam.bGain} min={0} max={255} val={cam.bGain} onChange={(v) => updCam("bGain", v)} disabled={cam.wbMode === "auto"} />
+                            </div>
+                          </div>
+                          <div style={{ fontSize: 12, color: T.faint, fontWeight: 600, marginTop: 4, marginBottom: 8 }}>One Push</div>
+                          <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
+                            <button disabled={cam.wbMode !== "onepush"}
+                              style={{ padding: "9px 22px", fontSize: 13, cursor: cam.wbMode === "onepush" ? "pointer" : "not-allowed", borderRadius: 6, border: `1px solid ${T.line2}`, background: T.panel2, color: cam.wbMode === "onepush" ? T.text : T.faint, fontFamily: fUI, flexShrink: 0 }}>
+                              Set
+                            </button>
+                            <span style={{ fontSize: 11.5, color: T.faint, lineHeight: 1.5 }}>If you select 'One push', please press SET when placing a sheet of white paper to the camera</span>
+                          </div>
+                        </div>
+
+                        {/* 第 2 欄:Saturation / Contrast / Sharpness(實機範圍) */}
+                        <div style={{ ...colStyle, padding: "0 18px", borderRight: `1px solid ${T.line}` }}>
+                          <ExpSlider label="Saturation" leftLabel="0" rightLabel="10" valueText={"" + cam.saturation} min={0} max={10} val={cam.saturation} onChange={(v) => updCam("saturation", v)} />
+                          <ExpSlider label="Contrast" leftLabel="0" rightLabel="4" valueText={"" + cam.contrast} min={0} max={4} val={cam.contrast} onChange={(v) => updCam("contrast", v)} />
+                          <ExpSlider label="Sharpness" leftLabel="0" rightLabel="3" valueText={"" + cam.sharpness} min={0} max={3} val={cam.sharpness} onChange={(v) => updCam("sharpness", v)} />
+                        </div>
+
+                        {/* 第 3 欄:Noise Filter + Mirror/Flip/LDC + Default */}
+                        <div style={{ ...colStyle, padding: "0 18px", justifyContent: "space-between" }}>
+                          <div>
+                            <div style={{ fontSize: 12, color: T.faint, fontWeight: 600, marginBottom: 10 }}>Noise Filter</div>
+                            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 16, gap: 4 }}>
+                              {[["off", "Off"], ["low", "Low"], ["medium", "Medium"], ["high", "High"]].map(([id, lb]) => (
+                                <div key={id} onClick={() => updCam("noiseFilter", id)} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 5, cursor: "pointer", flex: 1 }}>
+                                  <span style={{ width: 15, height: 15, borderRadius: "50%", border: `1.5px solid ${cam.noiseFilter === id ? T.blue : T.line2}`, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                                    {cam.noiseFilter === id && <span style={{ width: 7, height: 7, borderRadius: "50%", background: T.blue }} />}
+                                  </span>
+                                  <span style={{ fontSize: 12, color: cam.noiseFilter === id ? T.text : T.dim }}>{lb}</span>
+                                </div>
+                              ))}
+                            </div>
+                            <div style={{ display: "flex", gap: 12 }}>
+                              <div style={{ flex: 1 }}><CamCheck label="Mirror" checked={cam.mirror} onChange={(v) => updCam("mirror", v)} /></div>
+                              <div style={{ flex: 1 }}><CamCheck label="Flip" checked={cam.flip} onChange={(v) => updCam("flip", v)} /></div>
+                            </div>
+                            <div style={{ width: "calc(50% - 6px)" }}><CamCheck label="LDC" checked={cam.ldc} onChange={(v) => updCam("ldc", v)} /></div>
+                          </div>
+                          <div style={{ display: "flex", justifyContent: "flex-end" }}>
+                            <button onClick={() => setCam({ ...CAM_DEFAULTS, tab: "img" })}
+                              style={{ padding: "8px 22px", fontSize: 13, cursor: "pointer", borderRadius: 6, border: `1px solid ${T.line2}`, background: T.panel2, color: T.text, fontFamily: fUI }}>
+                              Default
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </>
+              );
+            })()}
+          </div>
         ) : (
           <div id="aver-video-audio-wrapper" key="video" className="aver-fade" style={{ display: "flex", flexDirection: "column", gap: 12, width: "100%", maxWidth: "1350px", margin: "0 auto", height: "100%", minHeight: 0, overflow: "hidden" }}>
             
@@ -3197,6 +3571,13 @@ export default function App() {
                 </button>
               </div>
             </div>
+          </div>
+        )}
+
+        {/* 版面懸浮切換按鈕 (置於右下角，最高層級) */}
+        {activeMenu === "paint" && (
+          <div style={{ position: "absolute", right: 24, bottom: 20, zIndex: 9999, boxShadow: "0 4px 16px rgba(0, 0, 0, 0.6)", borderRadius: 8 }}>
+            {paintLayoutToggle()}
           </div>
         )}
       </div>
