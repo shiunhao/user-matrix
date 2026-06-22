@@ -2415,24 +2415,25 @@ export default function App() {
       {isDirty && (<span style={{ fontSize: 14, fontWeight: 600, color: T.amber, background: "rgba(245,166,35,0.1)", padding: "3px 8px", borderRadius: 4, border: `1px solid rgba(245,166,35,0.2)` }}>● 已修改未儲存</span>)}
     </div>
   );
-  // 設計樣式切換鈕(雷達色環 / 雷達色環2 / 色彩量錶)
+  // 設計樣式切換鈕(雷達色環 / 雷達色環2 / 色彩量錶) - 直式垂直排列版
   const paintStyleToggle = () => {
     return (
-      <div style={{ display: "flex", background: "#101216", border: `1px solid ${T.line}`, borderRadius: 6, padding: 3, gap: 4, alignItems: "center", width: "auto", boxSizing: "border-box" }}>
+      <div style={{ display: "flex", flexDirection: "column", background: "#101216", border: `1px solid ${T.line}`, borderRadius: 8, padding: 3, gap: 4, alignItems: "stretch", width: 92, boxSizing: "border-box" }}>
         {[["wheel", "雷達色環"], ["wheel2", "雷達色環2"], ["strip", "色彩量錶"]].map(([id, lb]) => (
           <button key={id}
             onClick={() => { setMultiStyle(id); setIsFocused(false); }}
             style={{ 
-              padding: "4px 10px", 
+              padding: "6px 0", 
               fontSize: 13, 
               cursor: "pointer", 
-              borderRadius: 4, 
+              borderRadius: 5, 
               border: "none",
               background: multiStyle === id ? T.blue : "transparent",
               color: multiStyle === id ? "#fff" : T.dim, 
               fontFamily: fUI, 
               transition: "all .28s ease",
-              textAlign: "center"
+              textAlign: "center",
+              width: "100%"
             }}
           >
             {lb}
@@ -2442,18 +2443,18 @@ export default function App() {
     );
   };
 
-  // 版面切換鈕(經典 / 劇院) - 滑塊式過渡動畫版
+  // 版面切換鈕(經典 / 劇院) - 滑塊式垂直過渡動畫版
   const paintLayoutToggle = () => {
     const isClassic = paintLayout === "classic";
     return (
-      <div style={{ position: "relative", display: "flex", background: "#101216", border: `1px solid ${T.line}`, borderRadius: 8, padding: 3, gap: 0, userSelect: "none" }}>
-        {/* 滑動藍色背景指示器 */}
+      <div style={{ position: "relative", display: "flex", flexDirection: "column", background: "#101216", border: `1px solid ${T.line}`, borderRadius: 8, padding: 3, gap: 4, userSelect: "none", width: 92, boxSizing: "border-box" }}>
+        {/* 滑動藍色背景指示器 (垂直滑動) */}
         <div style={{
           position: "absolute",
-          top: 3,
-          bottom: 3,
-          left: isClassic ? 3 : "calc(50% + 1.5px)",
-          width: "calc(50% - 4.5px)",
+          left: 3,
+          right: 3,
+          top: isClassic ? 3 : 35, // 3 + 28按鈕高 + 4gap = 35px
+          height: 28,
           background: T.blue,
           borderRadius: 6,
           transition: "all 0.35s cubic-bezier(0.25, 1, 0.5, 1)",
@@ -2464,7 +2465,7 @@ export default function App() {
           return (
             <button key={id} onClick={() => setPaintLayout(id)} style={{ 
               position: "relative",
-              padding: "6px 16px", 
+              padding: "6px 0", 
               fontSize: 13, 
               fontWeight: 600, 
               cursor: "pointer", 
@@ -2475,7 +2476,8 @@ export default function App() {
               fontFamily: fUI, 
               transition: "color 0.35s ease",
               zIndex: 2,
-              width: 88,
+              width: "100%",
+              height: 28,
               textAlign: "center"
             }}>{lb}</button>
           );
