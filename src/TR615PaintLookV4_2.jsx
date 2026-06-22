@@ -1124,7 +1124,7 @@ export default function App() {
 
   // 實時繪製雷達色相環 (物理上真正的飽和度降低與變暗)
   useEffect(() => {
-    if (multiStyle !== "wheel") return;
+    if (multiStyle !== "wheel" && multiStyle !== "wheel2") return;
     const canvas = averWheelRingCanvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext("2d");
@@ -1716,7 +1716,7 @@ export default function App() {
       const isCinema = paintLayout === "cinema";
       const styleToggle = (
         <div style={{ display: "flex", background: "#101216", border: `1px solid ${T.line}`, borderRadius: 6, padding: 3, gap: 4, alignItems: "center", width: isCinema ? "100%" : "auto", boxSizing: "border-box" }}>
-          {[["wheel", "雷達色環"], ["strip", "色彩量錶"]].map(([id, lb]) => (
+          {[["wheel", "雷達色環"], ["wheel2", "雷達色環2"], ["strip", "色彩量錶"]].map(([id, lb]) => (
             <button key={id}
               onClick={() => { setMultiStyle(id); setIsFocused(false); }}
               style={{ 
@@ -1740,7 +1740,7 @@ export default function App() {
       );
 
       return (
-        <div id="aver-control-params-multi" style={{ display: "flex", flexDirection: "column", flex: 1, minHeight: 0, overflow: multiStyle === "wheel" ? "visible" : "hidden" }}>
+        <div id="aver-control-params-multi" style={{ display: "flex", flexDirection: "column", flex: 1, minHeight: 0, overflow: (multiStyle === "wheel" || multiStyle === "wheel2") ? "visible" : "hidden" }}>
           {isCinema ? (
             <>
               <BlockHeader
@@ -1761,9 +1761,9 @@ export default function App() {
               }
             />
           )}
-          <div style={{ display: "flex", flexDirection: "column", justifyContent: "flex-start", gap: 10, width: "100%", boxSizing: "border-box", flex: 1, minHeight: 0, overflow: multiStyle === "wheel" ? "visible" : "auto", padding: "10px 0" }}>
+          <div style={{ display: "flex", flexDirection: "column", justifyContent: "flex-start", gap: 10, width: "100%", boxSizing: "border-box", flex: 1, minHeight: 0, overflow: (multiStyle === "wheel" || multiStyle === "wheel2") ? "visible" : "auto", padding: "10px 0" }}>
 
-            {multiStyle === "wheel" ? (
+            {multiStyle === "wheel" || multiStyle === "wheel2" ? (
               <div 
                 onClick={() => { if (!mOff) { setSelAxis(null); if (isFocused) closeFocus(); } }}
                 style={{ display: "flex", gap: isFocused ? 30 : 10, alignItems: "center", justifyContent: "center", width: "100%", height: "100%", minHeight: 0 }}
@@ -1942,7 +1942,7 @@ export default function App() {
                         <button
                           className="aver-wheel-node-btn"
                           id={`aver-wheel-node-btn-${a}`}
-                          onClick={isDragNode ? undefined : (e) => { e.stopPropagation(); enterFocus(a); }}
+                          onClick={isDragNode ? undefined : (e) => { e.stopPropagation(); if (multiStyle === "wheel2") { setSelAxis(a === selAxis ? null : a); } else { enterFocus(a); } }}
                           onPointerDown={isDragNode ? (e) => { if (mOff) return; e.preventDefault(); ringDragRef.current = true; try { e.currentTarget.setPointerCapture(e.pointerId); } catch {} ringPointerMove(e); } : undefined}
                           onPointerMove={isDragNode ? ringPointerMove : undefined}
                           onPointerUp={isDragNode ? (e) => { ringDragRef.current = false; try { e.currentTarget.releasePointerCapture(e.pointerId); } catch {} } : undefined}
@@ -1963,10 +1963,10 @@ export default function App() {
                     );
                   })}
 
-                  <div id="aver-wheel-center-controller" style={{ position: "absolute", inset: 68, borderRadius: "50%", background: "radial-gradient(circle at 38% 30%, #181c21, #0e1114)", border: `1px solid ${isFocused ? `hsl(${fHue} 60% 45%)` : T.line2}`, boxShadow: "inset 0 0 24px rgba(0,0,0,0.6)", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 2, transition: "border-color 0.48s cubic-bezier(0.16, 1, 0.3, 1)", zIndex: 20 }}>
-                    {isFocused ? (
+                  <div id="aver-wheel-center-controller" style={{ position: "absolute", inset: 68, borderRadius: "50%", background: "radial-gradient(circle at 38% 30%, #181c21, #0e1114)", border: `1px solid ${(isFocused || (multiStyle === "wheel2" && selAxis)) ? `hsl(${fHue} 60% 45%)` : T.line2}`, boxShadow: "inset 0 0 24px rgba(0,0,0,0.6)", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 2, transition: "border-color 0.48s cubic-bezier(0.16, 1, 0.3, 1)", zIndex: 20 }}>
+                    {(isFocused || (multiStyle === "wheel2" && selAxis)) ? (
                       <>
-                        <span style={{ fontSize: 15, letterSpacing: 1.5, color: T.faint, fontFamily: fMono }}>調整中</span>
+                        <span style={{ fontSize: 15, letterSpacing: 1.5, color: T.faint, fontFamily: fMono }}>{multiStyle === "wheel2" ? "已選擇" : "調整中"}</span>
                         <span style={{ 
                           fontSize: selAxis === "MG" ? 21 : selAxis === "YL" ? 23 : selAxis === "G" ? 25 : 27, 
                           fontWeight: 700, 
@@ -1975,8 +1975,12 @@ export default function App() {
                           marginTop: 2
                         }}>{FULL_NAME[selAxis]}</span>
                         <div style={{ display: "flex", gap: 14, marginTop: 6, fontFamily: fMono, fontSize: 17 }}>
-                          <span style={{ color: draftHue ? T.blue : T.faint }}>H {draftHue > 0 ? "+" + draftHue : draftHue}</span>
-                          <span style={{ color: draftSat ? T.amber : T.faint }}>S {draftSat > 0 ? "+" + draftSat : draftSat}</span>
+                          <span style={{ color: (multiStyle === "wheel2" ? st.axes[selAxis].hue : draftHue) ? T.blue : T.faint }}>
+                            H {(multiStyle === "wheel2" ? st.axes[selAxis].hue : draftHue) > 0 ? "+" + (multiStyle === "wheel2" ? st.axes[selAxis].hue : draftHue) : (multiStyle === "wheel2" ? st.axes[selAxis].hue : draftHue)}
+                          </span>
+                          <span style={{ color: (multiStyle === "wheel2" ? st.axes[selAxis].sat : draftSat) ? T.amber : T.faint }}>
+                            S {(multiStyle === "wheel2" ? st.axes[selAxis].sat : draftSat) > 0 ? "+" + (multiStyle === "wheel2" ? st.axes[selAxis].sat : draftSat) : (multiStyle === "wheel2" ? st.axes[selAxis].sat : draftSat)}
+                          </span>
                         </div>
                       </>
                     ) : (
@@ -1995,7 +1999,147 @@ export default function App() {
               </div>
 
                 <div style={{ flex: 1, minWidth: 240 }} onClick={(e) => e.stopPropagation()}>
-                  {isFocused ? (
+                  {multiStyle === "wheel2" ? (
+                    <div style={{ display: "flex", flexDirection: "column", gap: 0, height: "100%", width: "100%" }}>
+                      <div style={{ fontSize: 14, color: T.text, fontWeight: 600, marginBottom: 8 }}>
+                        色彩控制項目
+                      </div>
+                      
+                      <div style={{ flex: 1, overflowY: "auto", paddingRight: 4, display: "flex", flexDirection: "column", gap: 8, minHeight: 0 }}>
+                        {AXIS16.map((axis) => {
+                          const isSelected = selAxis === axis;
+                          const ax = st.axes[axis];
+                          const dotCol = `hsl(${angUI[axis]} 90% 55%)`;
+                          
+                          return (
+                            <div
+                              key={axis}
+                              onClick={() => { if (!isSelected) setSelAxis(axis); }}
+                              style={{
+                                padding: "10px 12px",
+                                borderRadius: 8,
+                                border: isSelected 
+                                  ? `1.5px solid hsl(${angUI[axis]} 90% 55%)` 
+                                  : "1px solid rgba(255, 255, 255, 0.08)",
+                                background: isSelected 
+                                  ? "rgba(255, 255, 255, 0.06)" 
+                                  : "rgba(255, 255, 255, 0.01)",
+                                opacity: isSelected ? 1 : 0.45,
+                                transition: "all 0.24s cubic-bezier(0.16, 1, 0.3, 1)",
+                                cursor: isSelected ? "default" : "pointer",
+                                boxShadow: isSelected 
+                                  ? `0 0 14px hsl(${angUI[axis]} 90% 55% / 0.18)` 
+                                  : "none",
+                                display: "flex",
+                                flexDirection: "column",
+                                gap: 8
+                              }}
+                              onMouseEnter={(e) => {
+                                if (!isSelected) {
+                                  e.currentTarget.style.borderColor = "rgba(255, 255, 255, 0.22)";
+                                  e.currentTarget.style.background = "rgba(255, 255, 255, 0.03)";
+                                }
+                              }}
+                              onMouseLeave={(e) => {
+                                if (!isSelected) {
+                                  e.currentTarget.style.borderColor = "rgba(255, 255, 255, 0.08)";
+                                  e.currentTarget.style.background = "rgba(255, 255, 255, 0.01)";
+                                }
+                              }}
+                            >
+                              {/* Card Header */}
+                              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                                <div style={{ display: "flex", alignItems: "center" }}>
+                                  <span style={{ width: 9, height: 9, borderRadius: "50%", background: dotCol, boxShadow: `0 0 7px ${dotCol}`, marginRight: 8 }} />
+                                  <span style={{ fontSize: 13.5, fontWeight: 700, color: isSelected ? "#fff" : T.dim, fontFamily: fUI }}>
+                                    {FULL_NAME[axis]}
+                                  </span>
+                                </div>
+                                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                                  <span style={{ fontSize: 12.5, fontFamily: fMono, color: (ax.hue || ax.sat) ? T.amber : T.faint }}>
+                                    H{ax.hue >= 0 ? "+" : ""}{ax.hue} | S{ax.sat >= 0 ? "+" : ""}{ax.sat}
+                                  </span>
+                                  {(ax.hue !== 0 || ax.sat !== 0) && (
+                                    <button
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        if (mOff) return;
+                                        updAxis(axis, "hue", 0);
+                                        updAxis(axis, "sat", 0);
+                                      }}
+                                      title="重設此色相"
+                                      style={{
+                                        display: "flex", alignItems: "center", justifyContent: "center",
+                                        width: 16, height: 16, borderRadius: "50%", border: "none",
+                                        background: "rgba(255,255,255,0.15)", color: "rgba(255,255,255,0.7)",
+                                        fontSize: 9, fontWeight: 900, cursor: "pointer", transition: "all 0.15s ease",
+                                        padding: 0
+                                      }}
+                                      onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(255, 59, 48, 0.25)"; e.currentTarget.style.color = "#ff3b30"; }}
+                                      onMouseLeave={(e) => { e.currentTarget.style.background = "rgba(255, 255, 255, 0.15)"; e.currentTarget.style.color = "rgba(255, 255, 255, 0.7)"; }}
+                                    >
+                                      ✕
+                                    </button>
+                                  )}
+                                </div>
+                              </div>
+
+                              {/* Card Sliders */}
+                              <div style={{ display: "flex", gap: 14, width: "100%" }}>
+                                {/* Hue Slider */}
+                                <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 4 }}>
+                                  <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: T.faint }}>
+                                    <span>Hue</span>
+                                    <span>{ax.hue > 0 ? "+" + ax.hue : ax.hue}</span>
+                                  </div>
+                                  <input
+                                    type="range"
+                                    min={-99}
+                                    max={99}
+                                    value={ax.hue}
+                                    disabled={!isSelected || mOff}
+                                    onChange={(e) => updAxis(axis, "hue", parseInt(e.target.value))}
+                                    className="tr-sl"
+                                    style={{
+                                      width: "100%",
+                                      cursor: (!isSelected || mOff) ? "not-allowed" : "pointer",
+                                      "--p": ((ax.hue - (-99)) / 198) * 100 + "%"
+                                    }}
+                                  />
+                                </div>
+
+                                {/* Saturation Slider */}
+                                <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 4 }}>
+                                  <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: T.faint }}>
+                                    <span>Saturation</span>
+                                    <span>{ax.sat > 0 ? "+" + ax.sat : ax.sat}</span>
+                                  </div>
+                                  <input
+                                    type="range"
+                                    min={-99}
+                                    max={99}
+                                    value={ax.sat}
+                                    disabled={!isSelected || mOff}
+                                    onChange={(e) => updAxis(axis, "sat", parseInt(e.target.value))}
+                                    className="tr-sl"
+                                    style={{
+                                      width: "100%",
+                                      cursor: (!isSelected || mOff) ? "not-allowed" : "pointer",
+                                      "--p": ((ax.sat - (-99)) / 198) * 100 + "%"
+                                    }}
+                                  />
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+
+                      <div style={{ display: "flex", gap: 10, marginTop: 10, flexShrink: 0 }}>
+                        <MiniBtn onClick={() => { if (!mOff) upd("axes", DEF_AXES()); }} disabled={mOff} style={{ flex: 1 }}>全部歸零</MiniBtn>
+                      </div>
+                    </div>
+                  ) : isFocused ? (
                     /* [聚焦態] 控制面板在環右側(並排) */
                     <div className={focusClosing ? "aver-fade-out" : "aver-pop"} style={{ background: "rgba(0,0,0,0.18)", border: `1px solid ${T.line}`, borderRadius: 10, padding: "14px 16px", boxSizing: "border-box" }}>
                       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 12 }}>
@@ -2874,7 +3018,7 @@ export default function App() {
                 flexDirection: "column", 
                 alignSelf: "stretch" 
               }}>
-                <div style={{ flex: 1, overflow: (block === "multi" && multiStyle === "wheel") ? "visible" : "auto", minHeight: 0, paddingRight: 4, scrollbarGutter: "stable", display: "flex", flexDirection: "column" }}>
+                <div style={{ flex: 1, overflow: (block === "multi" && (multiStyle === "wheel" || multiStyle === "wheel2")) ? "visible" : "auto", minHeight: 0, paddingRight: 4, scrollbarGutter: "stable", display: "flex", flexDirection: "column" }}>
                   {renderBlock()}
                 </div>
               </div>
