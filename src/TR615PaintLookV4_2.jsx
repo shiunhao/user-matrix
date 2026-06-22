@@ -2001,8 +2001,11 @@ export default function App() {
                 <div style={{ flex: 1, minWidth: 240, height: "100%", display: "flex", flexDirection: "column", minHeight: 0 }} onClick={(e) => e.stopPropagation()}>
                   {multiStyle === "wheel2" ? (
                     <div style={{ display: "flex", flexDirection: "column", gap: 0, height: "100%", width: "100%" }}>
-                      <div style={{ fontSize: 14, color: T.text, fontWeight: 600, marginBottom: 8 }}>
-                        色彩控制項目
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8, width: "100%" }}>
+                        <span style={{ fontSize: 14, color: T.text, fontWeight: 600 }}>色彩控制項目</span>
+                        <div style={{ width: 80 }}>
+                          <MiniBtn onClick={() => { if (!mOff) upd("axes", DEF_AXES()); }} disabled={mOff}>全部歸零</MiniBtn>
+                        </div>
                       </div>
                       
                       <div style={{ flex: 1, overflowY: "auto", paddingRight: 4, display: "flex", flexDirection: "column", gap: 8, minHeight: 0 }}>
@@ -2135,9 +2138,7 @@ export default function App() {
                         })}
                       </div>
 
-                      <div style={{ display: "flex", gap: 10, marginTop: 10, flexShrink: 0 }}>
-                        <MiniBtn onClick={() => { if (!mOff) upd("axes", DEF_AXES()); }} disabled={mOff} style={{ flex: 1 }}>全部歸零</MiniBtn>
-                      </div>
+                      {/* 移至標題右側 */}
                     </div>
                   ) : isFocused ? (
                     /* [聚焦態] 控制面板在環右側(並排) */
@@ -2164,7 +2165,12 @@ export default function App() {
                     </div>
                   ) : (
                     <div style={{ display: "flex", flexDirection: "column", flex: 1, height: "100%", minHeight: 0 }}>
-                      <div style={{ fontSize: 14, color: T.text, fontWeight: 600, marginBottom: 6 }}>選擇要調整的色相軸</div>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6, width: "100%" }}>
+                        <span style={{ fontSize: 14, color: T.text, fontWeight: 600 }}>選擇要調整的色相軸</span>
+                        <div style={{ width: 80 }}>
+                          <MiniBtn onClick={() => upd("axes", DEF_AXES())} disabled={mOff}>全部歸零</MiniBtn>
+                        </div>
+                      </div>
                       <div style={{ fontSize: 12.5, color: T.dim, lineHeight: 1.6, marginBottom: 14 }}>
                         請點擊左側色相環上的節點（如 Red, Yellow 等）或下方已調整的晶片標籤，即可進入該色彩軸進行詳細微調。
                       </div>
@@ -2261,9 +2267,7 @@ export default function App() {
                           <div style={{ fontSize: 12, color: T.faint }}>尚未調整任何軸。</div>
                         )}
                       </div>
-                      <div style={{ display: "flex", flexShrink: 0 }}>
-                        <MiniBtn onClick={() => upd("axes", DEF_AXES())} disabled={mOff}>全部歸零</MiniBtn>
-                      </div>
+                      {/* 移至標題右側 */}
                     </div>
                   )}
                 </div>
