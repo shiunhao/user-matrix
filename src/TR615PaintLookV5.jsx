@@ -1481,13 +1481,17 @@ export default function App() {
     // 3. Multi-Matrix 活躍軸預篩選
     const activeAxes = [];
     AXIS16.forEach((a) => {
-      const ax = st.axes[a];
-      if (ax && (ax.hue !== 0 || ax.sat !== 0)) {
+      // 關鍵優化：如果在 focus 狀態下且當前選中這條軸，直接套用 draftHue 與 draftSat，實現調整當下即時預覽
+      const isCurrentAxis = isFocused && selAxis === a;
+      const hueVal = isCurrentAxis ? draftHue : (st.axes[a] ? st.axes[a].hue : 0);
+      const satVal = isCurrentAxis ? draftSat : (st.axes[a] ? st.axes[a].sat : 0);
+      
+      if (hueVal !== 0 || satVal !== 0) {
         activeAxes.push({
           name: a,
           hueAngle: AXIS_HUE[a],
-          hueAdj: (ax.hue / 99) * 22,
-          satAdj: (ax.sat / 99) * 0.85
+          hueAdj: (hueVal / 99) * 22,
+          satAdj: (satVal / 99) * 0.85
         });
       }
     });
@@ -1724,7 +1728,7 @@ export default function App() {
         g.fillText("暗", 5, 14); g.fillText("亮", W - 20, 14);
       }
     }
-  }, [st, bypass, colorBars, scope, showScope, imgLoaded, isDragging, paintLayout, activeMenu]);
+  }, [st, bypass, colorBars, scope, showScope, imgLoaded, isDragging, paintLayout, activeMenu, isFocused, selAxis, draftHue, draftSat]);
 
   useEffect(() => {
     if (block === "knee" || block === "black") setScope("wave");
@@ -2069,9 +2073,9 @@ export default function App() {
                           className="aver-wheel-node-btn"
                           id={`aver-wheel-node-btn-${a}`}
                           onClick={isDragNode ? undefined : (e) => { e.stopPropagation(); if (multiStyle === "wheel2") { setSelAxis(a === selAxis ? null : a); } else { enterFocus(a); } }}
-                          onPointerDown={isDragNode ? (e) => { if (mOff) return; e.preventDefault(); ringDragRef.current = true; try { e.currentTarget.setPointerCapture(e.pointerId); } catch {} ringPointerMove(e); } : undefined}
+                          onPointerDown={isDragNode ? (e) => { if (mOff) return; e.preventDefault(); ringDragRef.current = true; startDrag(); try { e.currentTarget.setPointerCapture(e.pointerId); } catch {} ringPointerMove(e); } : undefined}
                           onPointerMove={isDragNode ? ringPointerMove : undefined}
-                          onPointerUp={isDragNode ? (e) => { ringDragRef.current = false; try { e.currentTarget.releasePointerCapture(e.pointerId); } catch {} } : undefined}
+                          onPointerUp={isDragNode ? (e) => { ringDragRef.current = false; endDrag(); try { e.currentTarget.releasePointerCapture(e.pointerId); } catch {} } : undefined}
                           style={{
                             width: "100%", height: "100%", borderRadius: "50%",
                             cursor: mOff ? "default" : isDragNode ? "grab" : hide ? "default" : "pointer",
@@ -2275,8 +2279,8 @@ export default function App() {
                           <span style={{ fontSize: 11, color: T.amber, fontFamily: fMono }}>● 尚未套用</span>
                         )}
                       </div>
-                      <Slider k="hue" label="Hue" hint="該區色相旋轉" min={-99} max={99} val={draftHue} onChange={(v) => setDraftHue(v)} disabled={mOff} />
-                      <Slider k="sat" label="Saturation" hint="該區飽和度" min={-99} max={99} val={draftSat} onChange={(v) => setDraftSat(v)} disabled={mOff} />
+                      <Slider k="hue" label="Hue" hint="該區色相旋轉" min={-99} max={99} val={draftHue} onChange={(v) => setDraftHue(v)} onStartDrag={startDrag} onEndDrag={endDrag} disabled={mOff} />
+                      <Slider k="sat" label="Saturation" hint="該區飽和度" min={-99} max={99} val={draftSat} onChange={(v) => setDraftSat(v)} onStartDrag={startDrag} onEndDrag={endDrag} disabled={mOff} />
                       <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
                         <button onClick={confirmFocus} disabled={mOff}
                           style={{ flex: 1, padding: "9px 0", fontSize: 13.5, fontWeight: 600, cursor: mOff ? "default" : "pointer", borderRadius: 6, border: "none", background: mOff ? T.line : T.blue, color: mOff ? T.faint : "#fff", fontFamily: fUI }}>
@@ -2287,7 +2291,7 @@ export default function App() {
                           取消
                         </button>
                       </div>
-                      <Note>環即時預覽調整後的色相與飽和度,<span style={{ color: T.amber }}>需按「確定」才套用</span>;「取消」放棄變更。</Note>
+                      <Note>畫面與環即時預覽調整後的效果，<span style={{ color: T.amber }}>需按「確定」才儲存變更</span>；「取消」放棄修改。</Note>
                     </div>
                   ) : (
                     <div style={{ display: "flex", flexDirection: "column", flex: 1, height: "100%", minHeight: 0 }}>
