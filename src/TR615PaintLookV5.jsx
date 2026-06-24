@@ -305,7 +305,7 @@ const fMono = "'Consolas','Courier New',monospace";
 
 // 主要功能選單區塊定義
 const BLOCKS = [
-  ["matrix", "Matrix", "User Matrix 色彩矩陣"],
+  ["matrix", "Matrix", "Matrix 色彩矩陣"],
   // 2026-06-16 修改註記：將 Multi-Matrix 描述由 16 軸改為 6 軸
   ["multi", "Multi-Matrix", "6 軸分區色彩"],
   // 2026-06 [PM 定案] 移除 Detail 分頁(render 分支與 applyDetail 效果保留為無作用 dead code,st.detail 維持預設 0)
@@ -489,7 +489,7 @@ function MatrixRing({ level, phase, rg, rb, gr, gb, br, bg }) {
       </svg>
       {/* 中央深色控制盤(對齊 Multi-Matrix 中央樣式) */}
       <div style={{ position: "absolute", inset: "22%", borderRadius: "50%", background: "radial-gradient(circle at 38% 30%, #181c21, #0e1114)", border: `1px solid ${anyMoved ? "rgba(30,155,240,0.4)" : "rgba(255,255,255,0.12)"}`, boxShadow: "inset 0 0 18px rgba(0,0,0,0.6)", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 2, transition: "border-color .4s ease" }}>
-        <span style={{ fontSize: 13, letterSpacing: 1.5, color: "rgba(255,255,255,0.42)", fontFamily: "monospace" }}>User Matrix</span>
+        <span style={{ fontSize: 13, letterSpacing: 1.5, color: "rgba(255,255,255,0.42)", fontFamily: "monospace" }}>Matrix</span>
         <span style={{ fontSize: 23, fontWeight: 700, color: "rgba(255,255,255,0.88)", lineHeight: 1.1, marginTop: 1 }}>RGB</span>
         <span style={{ fontSize: 12, color: anyMoved ? "#f5a623" : "rgba(255,255,255,0.32)", fontFamily: "monospace", marginTop: 2 }}>{anyMoved ? "● 已調整" : "3 主色串擾"}</span>
       </div>
@@ -1865,7 +1865,7 @@ export default function App() {
       return (
         <div id="aver-control-params-matrix" style={{ display: "flex", flexDirection: "column", flex: 1, minHeight: 0 }}>
           <BlockHeader 
-            title="Matrix · User Matrix" 
+            title="Matrix" 
             sub="調整 RGB 三色的相互關係與整體色相、飽和，會同時影響全畫面的所有顏色"
             right={
               <div style={{ width: 80 }}>
