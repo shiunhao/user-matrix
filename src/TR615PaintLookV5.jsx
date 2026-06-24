@@ -2200,7 +2200,7 @@ export default function App() {
                       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8, width: "100%" }}>
                         <span style={{ fontSize: 14, color: T.text, fontWeight: 600 }}>色彩控制項目</span>
                         <div style={{ width: 80 }}>
-                          <MiniBtn onClick={() => { if (!mOff) upd("axes", DEF_AXES()); }} disabled={mOff}>全部歸零</MiniBtn>
+                          <MiniBtn onClick={() => { if (!mOff) upd("axes", DEF_AXES()); }} disabled={mOff}>Default</MiniBtn>
                         </div>
                       </div>
                       
@@ -2248,32 +2248,10 @@ export default function App() {
                                     {FULL_NAME[axis]}
                                   </span>
                                 </div>
-                                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                                <div style={{ display: "flex", alignItems: "center" }}>
                                   <span style={{ fontSize: 11, fontFamily: fMono, color: (ax.hue || ax.sat) ? T.amber : T.faint }}>
                                     H{ax.hue >= 0 ? "+" : ""}{ax.hue} | S{ax.sat >= 0 ? "+" : ""}{ax.sat}
                                   </span>
-                                  {(ax.hue !== 0 || ax.sat !== 0) && (
-                                    <button
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        if (mOff) return;
-                                        updAxis(axis, "hue", 0);
-                                        updAxis(axis, "sat", 0);
-                                      }}
-                                      title="重設此色相"
-                                      style={{
-                                        display: "flex", alignItems: "center", justifyContent: "center",
-                                        width: 13, height: 13, borderRadius: "50%", border: "none",
-                                        background: "rgba(255,255,255,0.15)", color: "rgba(255,255,255,0.7)",
-                                        fontSize: 8, fontWeight: 900, cursor: "pointer", transition: "all 0.15s ease",
-                                        padding: 0
-                                      }}
-                                      onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(255, 59, 48, 0.25)"; e.currentTarget.style.color = "#ff3b30"; }}
-                                      onMouseLeave={(e) => { e.currentTarget.style.background = "rgba(255, 255, 255, 0.15)"; e.currentTarget.style.color = "rgba(255, 255, 255, 0.7)"; }}
-                                    >
-                                      ✕
-                                    </button>
-                                  )}
                                 </div>
                               </div>
 
@@ -2305,7 +2283,7 @@ export default function App() {
                                 {/* Saturation Slider */}
                                 <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 1 }}>
                                   <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10, color: T.faint }}>
-                                    <span>Sat</span>
+                                    <span>Saturation</span>
                                     <span>{ax.sat > 0 ? "+" + ax.sat : ax.sat}</span>
                                   </div>
                                   <input
@@ -2360,7 +2338,7 @@ export default function App() {
                       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6, width: "100%" }}>
                         <span style={{ fontSize: 14, color: T.text, fontWeight: 600 }}>選擇要調整的色相軸</span>
                         <div style={{ width: 80 }}>
-                          <MiniBtn onClick={() => upd("axes", DEF_AXES())} disabled={mOff}>全部歸零</MiniBtn>
+                          <MiniBtn onClick={() => upd("axes", DEF_AXES())} disabled={mOff}>Default</MiniBtn>
                         </div>
                       </div>
                       <div style={{ fontSize: 12.5, color: T.dim, lineHeight: 1.6, marginBottom: 14 }}>
