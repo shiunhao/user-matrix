@@ -1867,23 +1867,41 @@ export default function App() {
           <BlockHeader 
             title="Matrix" 
             sub="調整 RGB 三色的相互關係與整體色相、飽和，會同時影響全畫面的所有顏色"
-            right={
-              <div style={{ width: 80 }}>
-                <MiniBtn onClick={() => MATRIX_KEYS.forEach(([k]) => upd(k, 0))}>default</MiniBtn>
-              </div>
-            }
           />
           {/* [PM 定案] 固定色相環視覺(對齊 Multi-Matrix)。
               色相環以 height:100% + aspectRatio:1 撐滿垂直空間成正方形,row 底部 paddingBottom 預留間距;
-              Level / Phase 等 8 項滑桿於右側分兩欄、垂直置中,寬度隨剩餘空間自適應。 */}
+              右側控制項對齊 Multi-Matrix 結構：有小標題、Default 按紐與大背景包覆。 */}
           <div style={{ display: "flex", gap: 28, alignItems: "stretch", flex: 1, minHeight: 0, paddingBottom: 16, boxSizing: "border-box" }}>
             <div style={{ flexShrink: 0, height: "100%", aspectRatio: "1", maxHeight: 360, display: "flex", alignItems: "center", justifyContent: "center" }}>
               <MatrixRing level={st.level} phase={st.phase} rg={st.rg} rb={st.rb} gr={st.gr} gb={st.gb} br={st.br} bg={st.bg} />
             </div>
-            <div style={{ flex: 1, minWidth: 0, display: "grid", gridTemplateColumns: "1fr 1fr", columnGap: 28, rowGap: 8, alignContent: "center" }}>
-              {MATRIX_KEYS.map(([k, lb, hint]) => (
-                <Slider key={k} k={k} label={lb} hint={hint} min={-99} max={99} val={st[k]} onChange={(v) => upd(k, v)} onStartDrag={startDrag} onEndDrag={endDrag} />
-              ))}
+            
+            <div style={{ flex: 1, minWidth: 240, height: "100%", display: "flex", flexDirection: "column", minHeight: 0 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8, width: "100%" }}>
+                <span style={{ fontSize: 14, color: T.text, fontWeight: 600 }}>色彩控制項目</span>
+                <div style={{ width: 80 }}>
+                  <MiniBtn onClick={() => MATRIX_KEYS.forEach(([k]) => upd(k, 0))}>Default</MiniBtn>
+                </div>
+              </div>
+              
+              <div style={{
+                flex: 1,
+                minHeight: 0,
+                background: "rgba(255, 255, 255, 0.03)",
+                border: "1px solid rgba(255, 255, 255, 0.10)",
+                borderRadius: 8,
+                padding: "12px 18px",
+                boxSizing: "border-box",
+                display: "grid",
+                gridTemplateColumns: "1fr 1fr",
+                columnGap: 24,
+                rowGap: 8,
+                alignContent: "center"
+              }}>
+                {MATRIX_KEYS.map(([k, lb, hint]) => (
+                  <Slider key={k} k={k} label={lb} hint={hint} min={-99} max={99} val={st[k]} onChange={(v) => upd(k, v)} onStartDrag={startDrag} onEndDrag={endDrag} />
+                ))}
+              </div>
             </div>
           </div>
         </div>
