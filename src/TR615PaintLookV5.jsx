@@ -2575,12 +2575,8 @@ export default function App() {
   const paintMonitor = () => (
     <div style={{ position: "relative", borderRadius: 10, overflow: "hidden", border: `1px solid ${T.line}`, background: "#000", flex: 1, minHeight: 0, width: "100%", boxSizing: "border-box", display: "flex", alignItems: "center", justifyContent: "center" }}>
       <canvas ref={preRef} width={SW} height={SH} style={{ width: "100%", height: "100%", display: "block", objectFit: "contain" }} />
-      <span style={{ position: "absolute", left: 12, top: 10, fontFamily: fMono, fontSize: 14, color: "rgba(255,255,255,.9)", textShadow: "0 1px 2px #000", fontWeight: 600, zIndex: 20 }}>{bypass ? "● BYPASS" : colorBars ? "● 彩條測試圖" : "● LIVE(模擬畫面)"}</span>
+      <span style={{ position: "absolute", left: 12, top: 10, fontFamily: fMono, fontSize: 14, color: "rgba(255,255,255,.9)", textShadow: "0 1px 2px #000", fontWeight: 600, zIndex: 20 }}>{bypass ? "● BYPASS" : "● LIVE(模擬畫面)"}</span>
       <div style={{ position: "absolute", right: 12, top: 10, display: "flex", gap: 8, zIndex: 20 }}>
-        <button onClick={() => setColorBars((v) => !v)}
-          style={{ padding: "4px 10px", fontSize: 14, cursor: "pointer", borderRadius: 5, border: colorBars ? `1px solid ${T.blue}` : "1px solid rgba(255,255,255,0.25)", background: colorBars ? "rgba(30,155,240,0.85)" : "rgba(22,24,27,0.65)", color: colorBars ? "#fff" : "rgba(255,255,255,0.9)", fontFamily: fUI, backdropFilter: "blur(4px)", transition: "all .15s" }}>
-          {colorBars ? "返回畫面" : "彩條"}
-        </button>
         <button onMouseDown={() => setBypass(true)} onMouseUp={() => setBypass(false)} onMouseLeave={() => setBypass(false)} onTouchStart={() => setBypass(true)} onTouchEnd={() => setBypass(false)}
           style={{ padding: "4px 10px", fontSize: 14, cursor: "pointer", borderRadius: 5, border: bypass ? `1px solid ${T.blue}` : "1px solid rgba(255,255,255,0.25)", background: bypass ? "rgba(30,155,240,0.85)" : "rgba(22,24,27,0.65)", color: bypass ? "#fff" : "rgba(255,255,255,0.9)", fontFamily: fUI, backdropFilter: "blur(4px)", transition: "all .15s" }}>
           {bypass ? "原始畫面" : "按住看原始"}
@@ -3083,15 +3079,11 @@ export default function App() {
                   {/* 主要畫面 Canvas — 已修正為 React 物理屬性防抖動架構 */}
                   <canvas ref={preRef} width={SW} height={SH} style={{ width: "100%", height: "100%", display: "block", objectFit: "contain" }} />
                   <span style={{ position: "absolute", left: 12, top: 10, fontFamily: fMono, fontSize: 14, color: "rgba(255,255,255,.9)", textShadow: "0 1px 2px #000", fontWeight: 600, zIndex: 20 }}>
-                    {bypass ? "● BYPASS" : colorBars ? "● 彩條測試圖" : "● LIVE(模擬畫面)"}
+                    {bypass ? "● BYPASS" : "● LIVE(模擬畫面)"}
                   </span>
                   
-                  {/* 彩條 + 按住看原始按鈕 */}
+                  {/* 按住看原始按鈕 */}
                   <div style={{ position: "absolute", right: 12, top: 10, display: "flex", gap: 8, zIndex: 20 }}>
-                    <button onClick={() => setColorBars((v) => !v)}
-                      style={{ padding: "4px 10px", fontSize: 14, cursor: "pointer", borderRadius: 5, border: colorBars ? `1px solid ${T.blue}` : "1px solid rgba(255,255,255,0.25)", background: colorBars ? "rgba(30,155,240,0.85)" : "rgba(22,24,27,0.65)", color: colorBars ? "#fff" : "rgba(255,255,255,0.9)", fontFamily: fUI, backdropFilter: "blur(4px)", transition: "all .15s" }}>
-                      {colorBars ? "返回畫面" : "彩條"}
-                    </button>
                     <button 
                       onMouseDown={() => setBypass(true)} 
                       onMouseUp={() => setBypass(false)} 
