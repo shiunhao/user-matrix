@@ -2206,7 +2206,7 @@ export default function App() {
                       
                       {/* [2026-06 PM 定案] 6 軸色彩控制改為 2 欄 × 3 列 grid:不捲動,單一畫面即可調整全部 6 色。
                           gridAutoRows:1fr 讓三列等高填滿可用空間;overflow:hidden 確保不出現 scroll bar。 */}
-                      <div style={{ flex: 1, minHeight: 0, overflow: "hidden", display: "grid", gridTemplateColumns: "1fr 1fr", gridAutoRows: "1fr", columnGap: 10, rowGap: 8 }}>
+                      <div style={{ flex: 1, minHeight: 0, overflow: "hidden", display: "grid", gridTemplateColumns: "1fr 1fr", gridAutoRows: "1fr", columnGap: 10, rowGap: 4 }}>
                         {AXIS16.map((axis) => {
                           const ax = st.axes[axis];
                           const dotCol = `hsl(${angUI[axis]} 90% 55%)`;
@@ -2216,8 +2216,8 @@ export default function App() {
                               key={axis}
                               onClick={() => { if (!mOff) setSelAxis(axis); }}
                               style={{
-                                padding: "9px 11px",
-                                borderRadius: 8,
+                                padding: "4px 8px",
+                                borderRadius: 6,
                                 border: "1px solid rgba(255, 255, 255, 0.10)",
                                 background: "rgba(255, 255, 255, 0.03)",
                                 opacity: mOff ? 0.4 : 1,
@@ -2226,7 +2226,7 @@ export default function App() {
                                 display: "flex",
                                 flexDirection: "column",
                                 justifyContent: "center",
-                                gap: 8,
+                                gap: 2,
                                 minWidth: 0
                               }}
                               onMouseEnter={(e) => {
@@ -2243,13 +2243,13 @@ export default function App() {
                               {/* Card Header */}
                               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
                                 <div style={{ display: "flex", alignItems: "center" }}>
-                                  <span style={{ width: 9, height: 9, borderRadius: "50%", background: dotCol, boxShadow: `0 0 7px ${dotCol}`, marginRight: 8 }} />
-                                  <span style={{ fontSize: 13.5, fontWeight: 700, color: "#fff", fontFamily: fUI }}>
+                                  <span style={{ width: 8, height: 8, borderRadius: "50%", background: dotCol, boxShadow: `0 0 6px ${dotCol}`, marginRight: 6 }} />
+                                  <span style={{ fontSize: 12.5, fontWeight: 700, color: "#fff", fontFamily: fUI }}>
                                     {FULL_NAME[axis]}
                                   </span>
                                 </div>
-                                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                                  <span style={{ fontSize: 12.5, fontFamily: fMono, color: (ax.hue || ax.sat) ? T.amber : T.faint }}>
+                                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                                  <span style={{ fontSize: 11, fontFamily: fMono, color: (ax.hue || ax.sat) ? T.amber : T.faint }}>
                                     H{ax.hue >= 0 ? "+" : ""}{ax.hue} | S{ax.sat >= 0 ? "+" : ""}{ax.sat}
                                   </span>
                                   {(ax.hue !== 0 || ax.sat !== 0) && (
@@ -2263,9 +2263,9 @@ export default function App() {
                                       title="重設此色相"
                                       style={{
                                         display: "flex", alignItems: "center", justifyContent: "center",
-                                        width: 16, height: 16, borderRadius: "50%", border: "none",
+                                        width: 13, height: 13, borderRadius: "50%", border: "none",
                                         background: "rgba(255,255,255,0.15)", color: "rgba(255,255,255,0.7)",
-                                        fontSize: 9, fontWeight: 900, cursor: "pointer", transition: "all 0.15s ease",
+                                        fontSize: 8, fontWeight: 900, cursor: "pointer", transition: "all 0.15s ease",
                                         padding: 0
                                       }}
                                       onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(255, 59, 48, 0.25)"; e.currentTarget.style.color = "#ff3b30"; }}
@@ -2278,10 +2278,10 @@ export default function App() {
                               </div>
 
                               {/* Card Sliders */}
-                              <div style={{ display: "flex", gap: 10, width: "100%", minWidth: 0 }}>
+                              <div style={{ display: "flex", gap: 6, width: "100%", minWidth: 0 }}>
                                 {/* Hue Slider */}
-                                <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 4 }}>
-                                  <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: T.faint }}>
+                                <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 1 }}>
+                                  <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10, color: T.faint }}>
                                     <span>Hue</span>
                                     <span>{ax.hue > 0 ? "+" + ax.hue : ax.hue}</span>
                                   </div>
@@ -2303,8 +2303,8 @@ export default function App() {
                                 </div>
 
                                 {/* Saturation Slider */}
-                                <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 4 }}>
-                                  <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: T.faint }}>
+                                <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 1 }}>
+                                  <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10, color: T.faint }}>
                                     <span>Sat</span>
                                     <span>{ax.sat > 0 ? "+" + ax.sat : ax.sat}</span>
                                   </div>
