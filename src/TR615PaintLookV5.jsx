@@ -717,7 +717,7 @@ function MiniBtn({ children, onClick, primary, disabled }) {
       onClick={onClick} 
       disabled={disabled} 
       style={{ 
-        flex: 1, padding: "4px 0", fontSize: 14, cursor: disabled ? "default" : "pointer", 
+        flex: 1, width: "100%", boxSizing: "border-box", margin: 0, padding: "4px 0", fontSize: 14, cursor: disabled ? "default" : "pointer", 
         borderRadius: 5, border: `1px solid ${primary ? T.blueDark : T.line2}`, 
         background: primary ? "rgba(30,155,240,0.12)" : "transparent", 
         color: disabled ? T.faint : primary ? T.blue : T.dim, 
@@ -1871,15 +1871,15 @@ export default function App() {
           {/* [PM 定案] 固定色相環視覺(對齊 Multi-Matrix)。
               色相環以 height:100% + aspectRatio:1 撐滿垂直空間成正方形,row 底部 paddingBottom 預留間距;
               右側控制項對齊 Multi-Matrix 結構：有小標題、Default 按紐與大背景包覆。 */}
-          <div style={{ display: "flex", gap: 28, alignItems: "stretch", flex: 1, minHeight: 0, paddingBottom: 16, boxSizing: "border-box" }}>
+          <div style={{ display: "flex", gap: 24, alignItems: "stretch", flex: 1, minHeight: 0, padding: "8px 0 16px", boxSizing: "border-box" }}>
             <div style={{ flexShrink: 0, height: "100%", aspectRatio: "1", maxHeight: 360, display: "flex", alignItems: "center", justifyContent: "center" }}>
               <MatrixRing level={st.level} phase={st.phase} rg={st.rg} rb={st.rb} gr={st.gr} gb={st.gb} br={st.br} bg={st.bg} />
             </div>
             
             <div style={{ flex: 1, minWidth: 240, height: "100%", display: "flex", flexDirection: "column", minHeight: 0 }}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8, width: "100%" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8, width: "100%", boxSizing: "border-box" }}>
                 <span style={{ fontSize: 14, color: T.text, fontWeight: 600 }}>色彩控制項目</span>
-                <div style={{ width: 80 }}>
+                <div style={{ width: 80, display: "flex" }}>
                   <MiniBtn onClick={() => MATRIX_KEYS.forEach(([k]) => upd(k, 0))}>Default</MiniBtn>
                 </div>
               </div>
@@ -1934,9 +1934,10 @@ export default function App() {
       // 採用 Canvas 實時繪製真正的飽和度與明度徑向變暗去色效果，免除 mask 重疊 CSS 限制
       const mOff = false;
 
+      const isWheel = multiStyle === "wheel" || multiStyle === "wheel2";
       const isCinema = paintLayout === "cinema";
       return (
-        <div id="aver-control-params-multi" style={{ display: "flex", flexDirection: "column", flex: 1, minHeight: 0, overflow: (multiStyle === "wheel" || multiStyle === "wheel2") ? "visible" : "hidden" }}>
+        <div id="aver-control-params-multi" style={{ display: "flex", flexDirection: "column", flex: 1, minHeight: 0, overflow: isWheel ? "visible" : "hidden" }}>
           {isCinema ? (
             <BlockHeader
               title="Multi-Matrix"
@@ -1947,12 +1948,12 @@ export default function App() {
               sub="點擊色環節點選取該色，單獨調整其色相與飽和，不影響其他顏色"
             />
           )}
-          <div style={{ display: "flex", flexDirection: "column", justifyContent: "flex-start", gap: 10, width: "100%", boxSizing: "border-box", flex: 1, minHeight: 0, overflow: (multiStyle === "wheel" || multiStyle === "wheel2") ? "visible" : "auto", padding: "10px 0" }}>
+          <div style={{ display: "flex", flexDirection: "column", justifyContent: "flex-start", gap: 10, width: "100%", boxSizing: "border-box", flex: 1, minHeight: 0, overflow: isWheel ? "visible" : "auto", padding: isWheel ? "8px 0 16px" : "10px 0" }}>
 
-            {multiStyle === "wheel" || multiStyle === "wheel2" ? (
+            {isWheel ? (
               <div 
                 onClick={() => { if (!mOff) { setSelAxis(null); if (isFocused) closeFocus(); } }}
-                style={{ display: "flex", gap: isFocused ? 30 : 10, alignItems: "center", justifyContent: "center", width: "100%", height: "100%", minHeight: 0 }}
+                style={{ display: "flex", gap: 24, alignItems: "stretch", justifyContent: "center", width: "100%", height: "100%", minHeight: 0 }}
               >
                 {/* === 雷達色環:選擇態(6軸) ↔ 聚焦態(單軸) === */}
                 <div id="aver-wheel-layout-shell" style={{ display: "flex", justifyContent: "center", alignItems: "center", flex: "0 0 290px", overflow: "visible", height: "100%" }}>
@@ -2215,9 +2216,9 @@ export default function App() {
                 <div style={{ flex: 1, minWidth: 240, height: "100%", display: "flex", flexDirection: "column", minHeight: 0 }} onClick={(e) => e.stopPropagation()}>
                   {multiStyle === "wheel2" ? (
                     <div style={{ display: "flex", flexDirection: "column", gap: 0, height: "100%", width: "100%" }}>
-                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8, width: "100%" }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8, width: "100%", boxSizing: "border-box" }}>
                         <span style={{ fontSize: 14, color: T.text, fontWeight: 600 }}>色彩控制項目</span>
-                        <div style={{ width: 80 }}>
+                        <div style={{ width: 80, display: "flex" }}>
                           <MiniBtn onClick={() => { if (!mOff) upd("axes", DEF_AXES()); }} disabled={mOff}>Default</MiniBtn>
                         </div>
                       </div>
@@ -2353,9 +2354,9 @@ export default function App() {
                     </div>
                   ) : (
                     <div style={{ display: "flex", flexDirection: "column", flex: 1, height: "100%", minHeight: 0 }}>
-                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6, width: "100%" }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6, width: "100%", boxSizing: "border-box" }}>
                         <span style={{ fontSize: 14, color: T.text, fontWeight: 600 }}>選擇要調整的色相軸</span>
-                        <div style={{ width: 80 }}>
+                        <div style={{ width: 80, display: "flex" }}>
                           <MiniBtn onClick={() => upd("axes", DEF_AXES())} disabled={mOff}>Default</MiniBtn>
                         </div>
                       </div>
