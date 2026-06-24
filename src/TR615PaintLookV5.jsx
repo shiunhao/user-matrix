@@ -2564,10 +2564,23 @@ export default function App() {
     
     if (block === "black") {
       return (
-        <div id="aver-control-params-black">
+        <div id="aver-control-params-black" style={{ display: "flex", flexDirection: "column", flex: 1, minHeight: 0 }}>
           <BlockHeader title="Black Level" />
-          <div style={{ maxWidth: 380 }}>
-            <Slider k="black" label="Level" hint="" min={-50} max={50} val={st.black} onChange={(v) => upd("black", v)} onStartDrag={startDrag} onEndDrag={endDrag} />
+          <div style={{ display: "flex", gap: 24, alignItems: "flex-start", flex: 1, minHeight: 0, padding: "8px 0 16px", boxSizing: "border-box" }}>
+            <div style={{
+              width: "100%",
+              maxWidth: 480,
+              background: "rgba(255, 255, 255, 0.03)",
+              border: "1px solid rgba(255, 255, 255, 0.10)",
+              borderRadius: 8,
+              padding: "16px 20px",
+              boxSizing: "border-box",
+              display: "flex",
+              flexDirection: "column",
+              gap: 12
+            }}>
+              <Slider k="black" label="Level" hint="" min={-50} max={50} val={st.black} onChange={(v) => upd("black", v)} onStartDrag={startDrag} onEndDrag={endDrag} />
+            </div>
           </div>
         </div>
       );
