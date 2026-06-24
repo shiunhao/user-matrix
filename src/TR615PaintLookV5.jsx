@@ -164,14 +164,30 @@ function applyMulti(R, G, B, axes) {
 function applyTone(R, G, B, p) {
   // Black level 提升暗部基準 (影響全圖，但偏向暗部)
   const bl = p.black / 50 * 0.12;
-  const kneeOn = !p.autoKnee;
-  const kp = p.kneePoint / 109, slope = 0.5 + (p.kneeSlope + 5) / 20;
+
+  // 決定 Auto Knee 或手動 Knee 的 Point 和 Slope 參數
+  let kp, slope;
+  if (p.autoKnee) {
+    if (p.kneeSens === "Low") {
+      kp = 94 / 109;       // 約 86% 起點
+      slope = 0.48;        // 輕微壓縮
+    } else if (p.kneeSens === "High") {
+      kp = 76 / 109;       // 約 70% 起點
+      slope = 0.22;        // 強力壓縮
+    } else { // Mid
+      kp = 85 / 109;       // 約 78% 起點
+      slope = 0.35;        // 中度壓縮
+    }
+  } else {
+    kp = p.kneePoint / 109;
+    slope = 0.5 + (p.kneeSlope + 5) / 20;
+  }
 
   const f = (v) => {
     // 套用黑位補償
     v = v + bl * (1 - v);
     // 套用高光壓縮曲線
-    if (kneeOn && v > kp) {
+    if (v > kp) {
       v = kp + (v - kp) * slope;
     }
     return v;
@@ -1490,9 +1506,23 @@ export default function App() {
     
     // 1. Tone 常數
     const bl = st.black / 50 * 0.12;
-    const kneeOn = !st.autoKnee;
-    const kp = st.kneePoint / 109;
-    const slope = 0.5 + (st.kneeSlope + 5) / 20;
+    const kneeOn = true;
+    let kp, slope;
+    if (st.autoKnee) {
+      if (st.kneeSens === "Low") {
+        kp = 94 / 109;
+        slope = 0.48;
+      } else if (st.kneeSens === "High") {
+        kp = 76 / 109;
+        slope = 0.22;
+      } else { // Mid
+        kp = 85 / 109;
+        slope = 0.35;
+      }
+    } else {
+      kp = st.kneePoint / 109;
+      slope = 0.5 + (st.kneeSlope + 5) / 20;
+    }
 
     // 2. Matrix 常數
     const matrixOn = true;
@@ -2519,35 +2549,49 @@ export default function App() {
     
     if (block === "knee") {
       return (
-        <div id="aver-control-params-knee">
+        <div id="aver-control-params-knee" style={{ display: "flex", flexDirection: "column", flex: 1, minHeight: 0 }}>
           <BlockHeader 
             title="Knee" 
           />
-          <div style={{ maxWidth: 420 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14 }}>
-              <Toggle on={st.autoKnee} onChange={(v) => upd("autoKnee", v)} label="Auto Knee" />
-              {st.autoKnee && (
-                <div style={{ display: "flex", gap: 4 }}>
-                  {["Low", "Mid", "High"].map((s) => (
-                    <button 
-                      key={s} 
-                      onClick={() => upd("kneeSens", s)} 
-                      style={{ 
-                        padding: "3px 10px", fontSize: 14, borderRadius: 5, cursor: "pointer", 
-                        border: `1px solid ${st.kneeSens === s ? T.blue : T.line2}`, 
-                        background: st.kneeSens === s ? "rgba(30,155,240,0.12)" : "transparent", 
-                        color: st.kneeSens === s ? T.blue : T.dim, fontFamily: fUI 
-                      }}
-                    >
-                      {s}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-            <div style={{ opacity: st.autoKnee ? 0.35 : 1, pointerEvents: st.autoKnee ? "none" : "auto" }}>
-              <Slider k="kneePoint" label="Point" hint="" min={75} max={105} val={st.kneePoint} onChange={(v) => upd("kneePoint", v)} neutral={95} onStartDrag={startDrag} onEndDrag={endDrag} />
-              <Slider k="kneeSlope" label="Slope" hint="" min={-5} max={5} val={st.kneeSlope} onChange={(v) => upd("kneeSlope", v)} onStartDrag={startDrag} onEndDrag={endDrag} />
+          <div style={{ display: "flex", gap: 24, alignItems: "stretch", flex: 1, minHeight: 0, padding: "8px 0 16px", boxSizing: "border-box" }}>
+            <div style={{
+              flex: 1,
+              maxWidth: 480,
+              minHeight: 0,
+              background: "rgba(255, 255, 255, 0.03)",
+              border: "1px solid rgba(255, 255, 255, 0.10)",
+              borderRadius: 8,
+              padding: "16px 20px",
+              boxSizing: "border-box",
+              display: "flex",
+              flexDirection: "column",
+              gap: 12,
+              justifyContent: "center"
+            }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 16, marginBottom: 4 }}>
+                <Toggle on={st.autoKnee} onChange={(v) => upd("autoKnee", v)} label="Auto Knee" />
+                {st.autoKnee && (
+                  <div style={{ display: "flex", gap: 4 }}>
+                    {["Low", "Mid", "High"].map((s) => (
+                      <button 
+                        key={s} 
+                        onClick={() => upd("kneeSens", s)} 
+                        style={{ 
+                          padding: "3px 10px", fontSize: 14, borderRadius: 5, cursor: "pointer", 
+                          border: `1px solid ${st.kneeSens === s ? T.blue : T.line2}`, 
+                          background: st.kneeSens === s ? "rgba(30,155,240,0.12)" : "transparent", 
+                          color: st.kneeSens === s ? T.blue : T.dim, fontFamily: fUI 
+                        }}
+                      >
+                        {s}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+              
+              <Slider k="kneePoint" label="Point" hint="" min={75} max={105} val={st.kneePoint} onChange={(v) => upd("kneePoint", v)} neutral={95} onStartDrag={startDrag} onEndDrag={endDrag} disabled={st.autoKnee} />
+              <Slider k="kneeSlope" label="Slope" hint="" min={-5} max={5} val={st.kneeSlope} onChange={(v) => upd("kneeSlope", v)} onStartDrag={startDrag} onEndDrag={endDrag} disabled={st.autoKnee} />
             </div>
           </div>
         </div>
