@@ -164,6 +164,8 @@ function applyMulti(R, G, B, axes) {
 function applyTone(R, G, B, p) {
   // Black level 提升暗部基準 (影響全圖，但偏向暗部)
   const bl = p.black / 50 * 0.12;
+  // Black Gamma 提升或壓低極暗部細節與對比
+  const bg = (p.blackGamma || 0) / 50 * 0.08;
 
   // 決定 Auto Knee 或手動 Knee 的 Point 和 Slope 參數
   let kp, slope;
@@ -178,6 +180,8 @@ function applyTone(R, G, B, p) {
   const f = (v) => {
     // 套用黑位補償
     v = v + bl * (1 - v);
+    // 套用 Black Gamma 暗部伽馬調整
+    v = v + bg * Math.pow(1 - v, 3.5);
     // 套用高光壓縮曲線
     if (v > kp) {
       v = kp + (v - kp) * slope;
@@ -345,7 +349,7 @@ const DEF = {
   multiOn: false, axes: DEF_AXES(),
   detailOn: false, detail: 0,
   kneeOn: false, autoKnee: false, kneeSens: "Mid", kneePoint: 95, kneeSlope: 0,
-  black: 0,
+  black: 0, blackGamma: 0,
 };
 
 // ============================================================================
@@ -1498,6 +1502,7 @@ export default function App() {
     
     // 1. Tone 常數
     const bl = st.black / 50 * 0.12;
+    const bg = (st.blackGamma || 0) / 50 * 0.08;
     const kneeOn = true;
     let kp, slope;
     if (st.autoKnee) {
@@ -1570,6 +1575,11 @@ export default function App() {
         R = R + bl * (1 - R);
         G = G + bl * (1 - G);
         B = B + bl * (1 - B);
+        
+        // 套用 Black Gamma 暗部調整
+        R = R + bg * Math.pow(1 - R, 3.5);
+        G = G + bg * Math.pow(1 - G, 3.5);
+        B = B + bg * Math.pow(1 - B, 3.5);
         if (kneeOn) {
           if (R > kp) R = kp + (R - kp) * slope;
           if (G > kp) G = kp + (G - kp) * slope;
@@ -2580,6 +2590,7 @@ export default function App() {
               gap: 12
             }}>
               <Slider k="black" label="Level" hint="" min={-50} max={50} val={st.black} onChange={(v) => upd("black", v)} onStartDrag={startDrag} onEndDrag={endDrag} />
+              <Slider k="blackGamma" label="Black Gamma" hint="" min={-50} max={50} val={st.blackGamma} onChange={(v) => upd("blackGamma", v)} onStartDrag={startDrag} onEndDrag={endDrag} />
             </div>
           </div>
         </div>
