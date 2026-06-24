@@ -2837,6 +2837,15 @@ export default function App() {
           animation: averCinemaEntrance 0.5s cubic-bezier(0.16, 1, 0.3, 1) both;
         }
 
+        /* 區塊切換（Matrix / Multi-Matrix / Knee / Black Level）過渡動畫 */
+        @keyframes averBlockEntrance {
+          0% { opacity: 0; transform: translateY(6px); }
+          100% { opacity: 1; transform: translateY(0); }
+        }
+        .aver-block-entrance {
+          animation: averBlockEntrance 0.28s cubic-bezier(0.16, 1, 0.3, 1) both;
+        }
+
         /* 全域自訂滾動條樣式，使其融入暗色主題 */
         * {
           scrollbar-width: thin;
@@ -3322,7 +3331,7 @@ export default function App() {
                 flexDirection: "column", 
                 alignSelf: "stretch" 
               }}>
-                <div style={{ flex: 1, overflow: (block === "multi" && (multiStyle === "wheel" || multiStyle === "wheel2")) ? "visible" : "auto", minHeight: 0, paddingRight: 4, scrollbarGutter: "stable", display: "flex", flexDirection: "column" }}>
+                <div key={block} className="aver-block-entrance" style={{ flex: 1, overflow: (block === "multi" && (multiStyle === "wheel" || multiStyle === "wheel2")) ? "visible" : "auto", minHeight: 0, paddingRight: 4, scrollbarGutter: "stable", display: "flex", flexDirection: "column" }}>
                   {renderBlock()}
                 </div>
               </div>
@@ -3352,7 +3361,7 @@ export default function App() {
                   {paintBlockNav(true)}
                 </div>
                 {/* 控制項 */}
-                <div style={{ flex: 1, overflowY: "auto", minHeight: 0, padding: "14px", scrollbarGutter: "stable" }}>
+                <div key={block} className="aver-block-entrance" style={{ flex: 1, overflowY: "auto", minHeight: 0, padding: "14px", scrollbarGutter: "stable" }}>
                   {renderBlock()}
                 </div>
               </div>
