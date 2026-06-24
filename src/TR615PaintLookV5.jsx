@@ -308,7 +308,7 @@ const BLOCKS = [
   ["matrix", "Matrix", "User Matrix 色彩矩陣"],
   // 2026-06-16 修改註記：將 Multi-Matrix 描述由 16 軸改為 6 軸
   ["multi", "Multi-Matrix", "6 軸分區色彩"],
-  ["detail", "Detail", "輪廓銳利度"],
+  // 2026-06 [PM 定案] 移除 Detail 分頁(render 分支與 applyDetail 效果保留為無作用 dead code,st.detail 維持預設 0)
   ["knee", "Knee", "高光壓縮"],
   ["black", "Black Level", "黑位準"],
 ];
@@ -428,52 +428,71 @@ function MatrixSwatch({ keyId, value }) {
   );
 }
 
-// ===== Matrix 色相環視覺化 (方案 2) =====
-// 大色相環反映整體調整:Phase 旋轉色相、Level 改變飽和、串擾把 R/G/B 三個主標記沿環推移
+// ===== Matrix 色相環視覺化 (對齊 Multi-Matrix 樣式) =====
+// 大色相環反映整體調整:Phase 旋轉色相、Level 改變飽和、串擾把 R/G/B 三個主標記沿環推移。
+// [2026-06 改版] 改為隨容器 100% 縮放的響應式元件,並對齊 Multi-Matrix 的視覺語彙:
+//   厚色環 + 緩轉虛線圈 + 圓形彩色節點徽章(白框/陰影/標籤) + 中央深色控制盤。
+// 全部以 viewBox 0-100 座標系繪製節點/連線,色環與中央盤用百分比 inset → 容器多大就多大。
 function MatrixRing({ level, phase, rg, rb, gr, gb, br, bg }) {
-  const SZ = 232, R = 92, C = SZ / 2;
+  const C = 50;          // viewBox 中心
+  const Rn = 41;         // 節點所在半徑(落在色環帶上)
   const sat = Math.max(0.25, 1 + (level / 99) * 0.85);
   const rot = (phase / 99) * 45;
   // 三個主色的位移色相(被串擾推移)
   const prim = [
-    { label: "R", hue: 0 + (rg / 99) * 44 - (rb / 99) * 44 },
-    { label: "G", hue: 120 - (gr / 99) * 44 + (gb / 99) * 44 },
-    { label: "B", hue: 240 + (br / 99) * 44 - (bg / 99) * 44 },
+    { label: "R", base: 0, hue: 0 + (rg / 99) * 44 - (rb / 99) * 44 },
+    { label: "G", base: 120, hue: 120 - (gr / 99) * 44 + (gb / 99) * 44 },
+    { label: "B", base: 240, hue: 240 + (br / 99) * 44 - (bg / 99) * 44 },
   ];
   const place = (hueDeg, r) => {
     const rad = ((hueDeg + rot) * Math.PI) / 180;
     return [C + r * Math.sin(rad), C - r * Math.cos(rad)];
   };
+  const anyMoved = prim.some((p) => Math.abs(p.hue - p.base) > 0.5);
   return (
-    <div style={{ width: SZ, height: SZ, position: "relative", flexShrink: 0 }}>
-      {/* 色相環 */}
+    <div style={{ width: "100%", height: "100%", aspectRatio: "1", position: "relative", flexShrink: 0 }}>
+      {/* 彩色圓環(conic + 徑向遮罩做甜甜圈) */}
       <div style={{
         position: "absolute", inset: 0, borderRadius: "50%",
         background: "conic-gradient(from 0deg, hsl(0,90%,55%), hsl(60,90%,55%), hsl(120,90%,55%), hsl(180,90%,55%), hsl(240,90%,55%), hsl(300,90%,55%), hsl(360,90%,55%))",
         filter: `hue-rotate(${rot}deg) saturate(${sat})`,
         WebkitMask: "radial-gradient(circle, transparent 42%, #000 44%)",
         mask: "radial-gradient(circle, transparent 42%, #000 44%)",
+        boxShadow: "0 0 10px rgba(255,255,255,0.10)",
         transition: "filter .3s cubic-bezier(.16,1,.3,1)"
       }} />
-      {/* 中央 */}
-      <div style={{ position: "absolute", inset: "40%", borderRadius: "50%", background: "radial-gradient(circle at 38% 30%, #181c21, #0e1114)", border: "1px solid rgba(255,255,255,0.12)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, letterSpacing: 1, color: "rgba(255,255,255,0.45)", fontFamily: "monospace" }}>RGB</div>
-      {/* 三主色位移標記 */}
-      <svg width={SZ} height={SZ} viewBox={`0 0 ${SZ} ${SZ}`} style={{ position: "absolute", inset: 0, overflow: "visible", pointerEvents: "none" }}>
+      {/* 緩慢旋轉的虛線圈(沿用 Multi-Matrix 的 mmspin) */}
+      <div style={{ position: "absolute", inset: "13%", borderRadius: "50%", border: "1.2px dashed rgba(255,255,255,0.16)", animation: "mmspin 35s linear infinite", pointerEvents: "none" }} />
+      {/* 串擾位移連線 + 圓形節點徽章(viewBox SVG,隨容器縮放) */}
+      <svg viewBox="0 0 100 100" style={{ position: "absolute", inset: 0, width: "100%", height: "100%", overflow: "visible", pointerEvents: "none" }}>
+        <defs>
+          <filter id="mtxNodeShadow" x="-60%" y="-60%" width="220%" height="220%">
+            <feDropShadow dx="0" dy="0.6" stdDeviation="1.1" floodColor="#000" floodOpacity="0.5" />
+          </filter>
+        </defs>
         {prim.map((p) => {
-          const [bx, by] = place(p.label === "R" ? 0 : p.label === "G" ? 120 : 240, R);
-          const [hx, hy] = place(p.hue, R);
-          const col = `hsl(${(p.hue + rot + 360) % 360} 85% 55%)`;
-          const moved = Math.abs(hx - bx) > 0.6 || Math.abs(hy - by) > 0.6;
+          const [bx, by] = place(p.base, Rn);
+          const [hx, hy] = place(p.hue, Rn);
+          const nodeHue = (p.hue + rot + 360) % 360;
+          const col = `hsl(${nodeHue} 85% 55%)`;
+          const [r, g, b] = hsv2rgb(nodeHue, 0.85, 0.95);
+          const moved = Math.abs(hx - bx) > 0.25 || Math.abs(hy - by) > 0.25;
           return (
-            <g key={p.label}>
-              {moved && <line x1={bx} y1={by} x2={hx} y2={hy} stroke={col} strokeWidth="2" strokeLinecap="round" opacity="0.5" style={{ transition: "all .3s cubic-bezier(.16,1,.3,1)" }} />}
-              {moved && <circle cx={bx} cy={by} r="3" fill="none" stroke="rgba(255,255,255,0.35)" strokeWidth="1" />}
-              <circle cx={hx} cy={hy} r="9" fill={col} stroke="#fff" strokeWidth="1.5" style={{ transition: "all .3s cubic-bezier(.16,1,.3,1)", filter: `drop-shadow(0 0 6px ${col})` }} />
-              <text x={hx} y={hy + 3.5} textAnchor="middle" fontSize="10" fontWeight="800" fill="#fff" style={{ transition: "all .3s cubic-bezier(.16,1,.3,1)" }}>{p.label}</text>
+            <g key={p.label} style={{ transition: "all .3s cubic-bezier(.16,1,.3,1)" }}>
+              {moved && <line x1={bx} y1={by} x2={hx} y2={hy} stroke={col} strokeWidth="1.4" strokeLinecap="round" opacity="0.5" />}
+              {moved && <circle cx={bx} cy={by} r="1.6" fill="none" stroke="rgba(255,255,255,0.35)" strokeWidth="0.7" />}
+              <circle cx={hx} cy={hy} r="7" fill={`rgb(${r * 255},${g * 255},${b * 255})`} stroke="#fff" strokeWidth="1.4" filter="url(#mtxNodeShadow)" />
+              <text x={hx} y={hy} textAnchor="middle" dominantBaseline="central" fontSize="6.2" fontWeight="800" fill="#fff" style={{ fontFamily: "monospace" }}>{p.label}</text>
             </g>
           );
         })}
       </svg>
+      {/* 中央深色控制盤(對齊 Multi-Matrix 中央樣式) */}
+      <div style={{ position: "absolute", inset: "22%", borderRadius: "50%", background: "radial-gradient(circle at 38% 30%, #181c21, #0e1114)", border: `1px solid ${anyMoved ? "rgba(30,155,240,0.4)" : "rgba(255,255,255,0.12)"}`, boxShadow: "inset 0 0 18px rgba(0,0,0,0.6)", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 2, transition: "border-color .4s ease" }}>
+        <span style={{ fontSize: 13, letterSpacing: 1.5, color: "rgba(255,255,255,0.42)", fontFamily: "monospace" }}>User Matrix</span>
+        <span style={{ fontSize: 23, fontWeight: 700, color: "rgba(255,255,255,0.88)", lineHeight: 1.1, marginTop: 1 }}>RGB</span>
+        <span style={{ fontSize: 12, color: anyMoved ? "#f5a623" : "rgba(255,255,255,0.32)", fontFamily: "monospace", marginTop: 2 }}>{anyMoved ? "● 已調整" : "3 主色串擾"}</span>
+      </div>
     </div>
   );
 }
@@ -940,6 +959,29 @@ function BodySlider({ val, min, max, onChange }) {
   );
 }
 
+// [2026-06 Task3] 「AVer 原廠預設」卡片改用固定示意圖,不從 live 畫面擷取。
+// RD 疑慮:原廠卡縮圖無明確擷取時機(開機抓?哪個時間點?),不合理;故以一張固定設計圖示意。
+// 其餘使用者場景仍於「另存新場景」當下擷取 live 畫面。此為設計用占位圖,實作時可換成 RD 提供的正式素材。
+const STD_FIXED_THUMB =
+  "data:image/svg+xml;charset=utf-8," +
+  encodeURIComponent(
+    "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 160 90'>" +
+      "<defs><linearGradient id='g' x1='0' y1='0' x2='0' y2='1'>" +
+      "<stop offset='0' stop-color='#1b2027'/><stop offset='1' stop-color='#0d1014'/>" +
+      "</linearGradient></defs>" +
+      "<rect width='160' height='90' fill='url(#g)'/>" +
+      "<rect x='22' y='62' width='116' height='6' rx='3' fill='#2a3038'/>" +
+      "<rect x='22' y='62' width='19' height='6' fill='#3c434c'/>" +
+      "<rect x='41' y='62' width='19' height='6' fill='#555d67'/>" +
+      "<rect x='60' y='62' width='19' height='6' fill='#6f7882'/>" +
+      "<rect x='79' y='62' width='19' height='6' fill='#8a929c'/>" +
+      "<rect x='98' y='62' width='19' height='6' fill='#a6aeb8'/>" +
+      "<rect x='117' y='62' width='21' height='6' rx='3' fill='#c8ced5'/>" +
+      "<text x='80' y='40' fill='#e8edf2' font-family='Arial,Helvetica,sans-serif' font-size='18' font-weight='700' text-anchor='middle' letter-spacing='1'>AVer</text>" +
+      "<text x='80' y='52' fill='#7f8893' font-family='Arial,Helvetica,sans-serif' font-size='7' text-anchor='middle' letter-spacing='3'>STANDARD</text>" +
+    "</svg>"
+  );
+
 /**
  * 右側場景檔的小方塊縮圖按鈕 (Scene Select Grid Tile)
  */
@@ -974,7 +1016,9 @@ function SceneTile({ thumb, name, remark, active, dirty, factory, onLoad, onEdit
         )}
         
         <div onClick={onLoad} title={remark || name} style={{ cursor: "pointer" }}>
-          <div style={{ position: "relative", aspectRatio: "16/9", background: "#0a0c0e" }}>
+          {/* [2026-06 Task2] 縮圖高度由 16/9 比例改為固定 50px,讓場景檔面板完整高度可一次容納約 6 張卡。
+              標題列與編輯/刪除按鈕維持原尺寸(不再縮小)。 */}
+          <div style={{ position: "relative", height: 50, background: "#0a0c0e" }}>
             {thumb ? (
               <img 
                 src={thumb} 
@@ -1086,6 +1130,10 @@ export default function App() {
   const [st, setSt] = useState(JSON.parse(JSON.stringify(DEF)));
   const [block, setBlock] = useState("matrix");
   const [selAxis, setSelAxis] = useState("R");
+  // [2026-06] 拖曳色彩控制項時,在 Multi-Matrix 色相環上放一個「由內而外、一閃而過」的光圈(沿用雷達色環 focus 進場語彙)。
+  // { axis, key },key 遞增以每次拖曳重播動畫。
+  const [wheelFlash, setWheelFlash] = useState(null);
+  const triggerWheelFlash = (axis) => setWheelFlash((b) => ({ axis, key: (b?.key || 0) + 1 }));
   const [scenes, setScenes] = useState([]);            
   const [activeScene, setActiveScene] = useState("std"); 
   
@@ -1142,15 +1190,16 @@ export default function App() {
 
   // Multi-Matrix 聚焦態
   const [isFocused, setIsFocused] = useState(false);
-  const [multiStyle, setMultiStyle] = useState("wheel"); // "wheel" 雷達色環 | "strip" 色彩量錶(兩種 UX demo)
-  const [matrixViz, setMatrixViz] = useState("swatch"); // Matrix 視覺化:"swatch" 色塊 | "ring" 色相環
+  const [multiStyle, setMultiStyle] = useState("wheel2"); // [PM 定案] Multi-Matrix 採「雷達色環2」方案;切換鈕已移除,預設鎖定 wheel2(wheel / strip 分支保留為相容備用)
+  const [matrixViz, setMatrixViz] = useState("ring"); // [PM 定案] Matrix 採「色相環」方案;切換鈕已移除,預設鎖定 ring(swatch 分支保留為相容備用)
   // ===== Paint/Look Onboarding 引導 =====
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [onbStep, setOnbStep] = useState(0);
   const [onbClosing, setOnbClosing] = useState(false);
   const onbSeenRef = useRef(false);
+  // [2026-06 暫時移除 onboarding 流程] 停用自動開啟。需恢復時把下方 if 條件的 `false &&` 拿掉即可。
   useEffect(() => {
-    if (activeMenu === "paint" && !onbSeenRef.current) {
+    if (false && activeMenu === "paint" && !onbSeenRef.current) {
       onbSeenRef.current = true;
       setOnbStep(0);
       setShowOnboarding(true);
@@ -1814,40 +1863,29 @@ export default function App() {
   const renderBlock = () => {
     if (block === "matrix") {
       return (
-        <div id="aver-control-params-matrix">
+        <div id="aver-control-params-matrix" style={{ display: "flex", flexDirection: "column", flex: 1, minHeight: 0 }}>
           <BlockHeader 
             title="Matrix · User Matrix" 
+            sub="調整 RGB 三色的相互關係與整體色相、飽和，會同時影響全畫面的所有顏色"
             right={
               <div style={{ width: 80 }}>
                 <MiniBtn onClick={() => MATRIX_KEYS.forEach(([k]) => upd(k, 0))}>default</MiniBtn>
               </div>
             }
           />
-          {matrixViz === "swatch" ? (
-            <div>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", columnGap: 26 }}>
-                {MATRIX_KEYS.map(([k, lb, hint]) => (
-                  <div key={k} style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <Slider k={k} label={lb} hint={hint} min={-99} max={99} val={st[k]} onChange={(v) => upd(k, v)} onStartDrag={startDrag} onEndDrag={endDrag} />
-                    </div>
-                    <MatrixSwatch keyId={k} value={st[k]} />
-                  </div>
-                ))}
-              </div>
+          {/* [PM 定案] 固定色相環視覺(對齊 Multi-Matrix)。
+              色相環以 height:100% + aspectRatio:1 撐滿垂直空間成正方形,row 底部 paddingBottom 預留間距;
+              Level / Phase 等 8 項滑桿於右側分兩欄、垂直置中,寬度隨剩餘空間自適應。 */}
+          <div style={{ display: "flex", gap: 28, alignItems: "stretch", flex: 1, minHeight: 0, paddingBottom: 16, boxSizing: "border-box" }}>
+            <div style={{ flexShrink: 0, height: "100%", aspectRatio: "1", maxHeight: 360, display: "flex", alignItems: "center", justifyContent: "center" }}>
+              <MatrixRing level={st.level} phase={st.phase} rg={st.rg} rb={st.rb} gr={st.gr} gb={st.gb} br={st.br} bg={st.bg} />
             </div>
-          ) : (
-            <div style={{ display: "flex", gap: 24, alignItems: "center", padding: "6px 0 10px" }}>
-              <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                <MatrixRing level={st.level} phase={st.phase} rg={st.rg} rb={st.rb} gr={st.gr} gb={st.gb} br={st.br} bg={st.bg} />
-              </div>
-              <div style={{ flex: 1, minWidth: 0, display: "grid", gridTemplateColumns: "1fr 1fr", columnGap: 20, rowGap: 2 }}>
-                {MATRIX_KEYS.map(([k, lb, hint]) => (
-                  <Slider key={k} k={k} label={lb} hint={hint} min={-99} max={99} val={st[k]} onChange={(v) => upd(k, v)} onStartDrag={startDrag} onEndDrag={endDrag} />
-                ))}
-              </div>
+            <div style={{ flex: 1, minWidth: 0, display: "grid", gridTemplateColumns: "1fr 1fr", columnGap: 28, rowGap: 8, alignContent: "center" }}>
+              {MATRIX_KEYS.map(([k, lb, hint]) => (
+                <Slider key={k} k={k} label={lb} hint={hint} min={-99} max={99} val={st[k]} onChange={(v) => upd(k, v)} onStartDrag={startDrag} onEndDrag={endDrag} />
+              ))}
             </div>
-          )}
+          </div>
         </div>
       );
     }
@@ -1888,7 +1926,7 @@ export default function App() {
           ) : (
             <BlockHeader
               title="Multi-Matrix"
-              sub="6 軸分區 — 只調整特定色相範圍，不影響其他顏色"
+              sub="點擊色環節點選取該色，單獨調整其色相與飽和，不影響其他顏色"
             />
           )}
           <div style={{ display: "flex", flexDirection: "column", justifyContent: "flex-start", gap: 10, width: "100%", boxSizing: "border-box", flex: 1, minHeight: 0, overflow: (multiStyle === "wheel" || multiStyle === "wheel2") ? "visible" : "auto", padding: "10px 0" }}>
@@ -1916,6 +1954,30 @@ export default function App() {
                   {isFocused && (
                     <div id="aver-wheel-focus-burst" key={"burst-" + selAxis} style={{ position: "absolute", left: "50%", top: "50%", width: 150, height: 150, borderRadius: "50%", border: `2px solid hsl(${fHue} 85% 62%)`, background: `radial-gradient(circle, transparent 56%, hsl(${fHue} 85% 60% / .45) 70%, transparent 82%)`, transform: "translate(-50%,-50%)", animation: focusClosing ? "averBurstOut .24s ease-in both" : "averBurst .88s cubic-bezier(0.16, 1, 0.3, 1) both", pointerEvents: "none", zIndex: 7 }} />
                   )}
+
+                  {/* [2026-06 拖曳一閃] 拖曳右側色彩控制項時,在色環中央放一個由內而外、快進緩出的光圈,
+                      帶外圈光暈與內外輝光(發亮感)。顏色取自被拖曳的色軸。key 綁 wheelFlash.key → 每次拖曳重播。 */}
+                  {wheelFlash && (() => {
+                    const wfHue = angUI[wheelFlash.axis];
+                    return (
+                      <div
+                        key={"wflash-" + wheelFlash.key}
+                        onAnimationEnd={() => setWheelFlash(null)}
+                        style={{
+                          position: "absolute", left: "50%", top: "50%",
+                          width: 150, height: 150, borderRadius: "50%",
+                          border: `1px solid hsl(${wfHue} 96% 74%)`,
+                          background: `radial-gradient(circle, transparent 78%, hsl(${wfHue} 92% 66% / .48) 87%, hsl(${wfHue} 92% 60% / .12) 93%, transparent 97%)`,
+                          boxShadow: `0 0 16px 2px hsl(${wfHue} 90% 60% / .5), 0 0 34px 6px hsl(${wfHue} 90% 55% / .25), inset 0 0 7px hsl(${wfHue} 96% 74% / .4)`,
+                          filter: "brightness(1.18) saturate(1.1)",
+                          transform: "translate(-50%,-50%)",
+                          animation: "averWheelFlash 0.78s cubic-bezier(0.22, 0.61, 0.36, 1) both",
+                          pointerEvents: "none",
+                          zIndex: 7
+                        }}
+                      />
+                    );
+                  })()}
 
                   
                   {/* 實體圓環層 - 採用高性能 2D Canvas 繪製，呈現物理真實的飽和度與明度去色變暗 */}
@@ -2048,8 +2110,12 @@ export default function App() {
                     const rNode = 119.75 + (nodeSatVal / 99) * 25.25;
                     const x = 145 + Math.cos(dispAng) * rNode, y = 145 + Math.sin(dispAng) * rNode;
                     const nodeHue = (nodeAngDeg + 360) % 360;
-                    const nodeSat = isDragNode ? Math.min(1.0, 0.66 + (draftSat / 99) * 0.34) : 0.85;
-                    const nodeVal = isDragNode ? Math.min(1.0, 0.58 + (draftSat / 99) * 0.42) : 0.95;
+                    // [2026-06] 節點填色的飽和度/明度跟著該軸 Saturation 變化:
+                    //   sat=0 維持原鮮豔基準(0.85/0.95);負值去飽和變灰、正值更鮮豔。
+                    //   (位置半徑 rNode 也同步隨 sat 內外移動,與環的「中心=灰、外緣=鮮」一致)
+                    const satNorm = nodeSatVal / 99; // [-1, 1]
+                    const nodeSat = Math.min(1.0, Math.max(0.12, 0.85 + satNorm * (satNorm >= 0 ? 0.15 : 0.7)));
+                    const nodeVal = Math.min(1.0, Math.max(0.5, 0.95 + (satNorm < 0 ? satNorm * 0.12 : 0)));
                     const [r, g, b] = hsv2rgb(nodeHue, nodeSat, nodeVal);
                     const touched = st.axes[a].hue !== 0 || st.axes[a].sat !== 0;
                     // [C] 有調整過的軸存在時,未調整且未選中的節點降存在感(縮小+變淡),讓調過的浮出
@@ -2138,53 +2204,47 @@ export default function App() {
                         </div>
                       </div>
                       
-                      <div style={{ flex: 1, overflowY: "auto", paddingRight: 4, display: "flex", flexDirection: "column", gap: 8, minHeight: 0 }}>
+                      {/* [2026-06 PM 定案] 6 軸色彩控制改為 2 欄 × 3 列 grid:不捲動,單一畫面即可調整全部 6 色。
+                          gridAutoRows:1fr 讓三列等高填滿可用空間;overflow:hidden 確保不出現 scroll bar。 */}
+                      <div style={{ flex: 1, minHeight: 0, overflow: "hidden", display: "grid", gridTemplateColumns: "1fr 1fr", gridAutoRows: "1fr", columnGap: 10, rowGap: 8 }}>
                         {AXIS16.map((axis) => {
-                          const isSelected = selAxis === axis;
                           const ax = st.axes[axis];
                           const dotCol = `hsl(${angUI[axis]} 90% 55%)`;
                           
                           return (
                             <div
                               key={axis}
-                              onClick={() => { if (!isSelected) setSelAxis(axis); }}
+                              onClick={() => { if (!mOff) setSelAxis(axis); }}
                               style={{
-                                padding: "10px 12px",
+                                padding: "9px 11px",
                                 borderRadius: 8,
-                                border: isSelected 
-                                  ? `1.5px solid hsl(${angUI[axis]} 90% 55%)` 
-                                  : "1px solid rgba(255, 255, 255, 0.08)",
-                                background: isSelected 
-                                  ? "rgba(255, 255, 255, 0.06)" 
-                                  : "rgba(255, 255, 255, 0.01)",
-                                opacity: isSelected ? 1 : 0.45,
-                                transition: "all 0.24s cubic-bezier(0.16, 1, 0.3, 1)",
-                                cursor: isSelected ? "default" : "pointer",
-                                boxShadow: isSelected 
-                                  ? `0 0 14px hsl(${angUI[axis]} 90% 55% / 0.18)` 
-                                  : "none",
+                                border: "1px solid rgba(255, 255, 255, 0.10)",
+                                background: "rgba(255, 255, 255, 0.03)",
+                                opacity: mOff ? 0.4 : 1,
+                                transition: "all 0.2s ease",
+                                cursor: "default",
                                 display: "flex",
                                 flexDirection: "column",
-                                gap: 8
+                                justifyContent: "center",
+                                gap: 8,
+                                minWidth: 0
                               }}
                               onMouseEnter={(e) => {
-                                if (!isSelected) {
-                                  e.currentTarget.style.borderColor = "rgba(255, 255, 255, 0.22)";
-                                  e.currentTarget.style.background = "rgba(255, 255, 255, 0.03)";
+                                if (!mOff) {
+                                  e.currentTarget.style.borderColor = "rgba(255, 255, 255, 0.20)";
+                                  e.currentTarget.style.background = "rgba(255, 255, 255, 0.05)";
                                 }
                               }}
                               onMouseLeave={(e) => {
-                                if (!isSelected) {
-                                  e.currentTarget.style.borderColor = "rgba(255, 255, 255, 0.08)";
-                                  e.currentTarget.style.background = "rgba(255, 255, 255, 0.01)";
-                                }
+                                e.currentTarget.style.borderColor = "rgba(255, 255, 255, 0.10)";
+                                e.currentTarget.style.background = "rgba(255, 255, 255, 0.03)";
                               }}
                             >
                               {/* Card Header */}
                               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
                                 <div style={{ display: "flex", alignItems: "center" }}>
                                   <span style={{ width: 9, height: 9, borderRadius: "50%", background: dotCol, boxShadow: `0 0 7px ${dotCol}`, marginRight: 8 }} />
-                                  <span style={{ fontSize: 13.5, fontWeight: 700, color: isSelected ? "#fff" : T.dim, fontFamily: fUI }}>
+                                  <span style={{ fontSize: 13.5, fontWeight: 700, color: "#fff", fontFamily: fUI }}>
                                     {FULL_NAME[axis]}
                                   </span>
                                 </div>
@@ -2218,9 +2278,9 @@ export default function App() {
                               </div>
 
                               {/* Card Sliders */}
-                              <div style={{ display: "flex", gap: 14, width: "100%" }}>
+                              <div style={{ display: "flex", gap: 10, width: "100%", minWidth: 0 }}>
                                 {/* Hue Slider */}
-                                <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 4 }}>
+                                <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 4 }}>
                                   <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: T.faint }}>
                                     <span>Hue</span>
                                     <span>{ax.hue > 0 ? "+" + ax.hue : ax.hue}</span>
@@ -2230,21 +2290,22 @@ export default function App() {
                                     min={-99}
                                     max={99}
                                     value={ax.hue}
-                                    disabled={!isSelected || mOff}
+                                    disabled={mOff}
+                                    onPointerDown={() => { if (!mOff) { setSelAxis(axis); triggerWheelFlash(axis); } }}
                                     onChange={(e) => updAxis(axis, "hue", parseInt(e.target.value))}
                                     className="tr-sl"
                                     style={{
                                       width: "100%",
-                                      cursor: (!isSelected || mOff) ? "not-allowed" : "pointer",
+                                      cursor: mOff ? "not-allowed" : "pointer",
                                       "--p": ((ax.hue - (-99)) / 198) * 100 + "%"
                                     }}
                                   />
                                 </div>
 
                                 {/* Saturation Slider */}
-                                <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 4 }}>
+                                <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 4 }}>
                                   <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: T.faint }}>
-                                    <span>Saturation</span>
+                                    <span>Sat</span>
                                     <span>{ax.sat > 0 ? "+" + ax.sat : ax.sat}</span>
                                   </div>
                                   <input
@@ -2252,12 +2313,13 @@ export default function App() {
                                     min={-99}
                                     max={99}
                                     value={ax.sat}
-                                    disabled={!isSelected || mOff}
+                                    disabled={mOff}
+                                    onPointerDown={() => { if (!mOff) { setSelAxis(axis); triggerWheelFlash(axis); } }}
                                     onChange={(e) => updAxis(axis, "sat", parseInt(e.target.value))}
                                     className="tr-sl"
                                     style={{
                                       width: "100%",
-                                      cursor: (!isSelected || mOff) ? "not-allowed" : "pointer",
+                                      cursor: mOff ? "not-allowed" : "pointer",
                                       "--p": ((ax.sat - (-99)) / 198) * 100 + "%"
                                     }}
                                   />
@@ -2545,7 +2607,7 @@ export default function App() {
   );
   const paintSceneTiles = () => (
     <>
-      <SceneTile thumb={stdThumb} name="AVer" factory active={activeScene === "std"} dirty={isDirty} onLoad={loadStandard} />
+      <SceneTile thumb={STD_FIXED_THUMB} name="AVer" factory active={activeScene === "std"} dirty={isDirty} onLoad={loadStandard} />
       {scenes.map((s) => (
         <SceneTile key={s.id} thumb={s.thumb} name={s.name} remark={s.remark} active={activeScene === s.id} dirty={isDirty} onLoad={() => loadScene(s)} onEdit={() => { setEditingScene(s.id); setEdName(s.name); setEdRemark(s.remark || ""); setSaveOpen(false); }} onDelete={() => setDeletingScene(s)} />
       ))}
@@ -2621,7 +2683,7 @@ export default function App() {
     {
       tag: "色彩調整",
       title: "左側色彩區塊調色",
-      desc: "Matrix、Multi-Matrix、Detail、Knee、Black Level 逐項微調影像色彩與層次。每個區塊都搭配視覺化輔助(色塊 / 色相環、雷達色環、色彩量錶),抽象參數一看就懂在調什麼。",
+      desc: "Matrix、Multi-Matrix、Knee、Black Level 逐項微調影像色彩與層次。每個區塊都搭配視覺化輔助(色塊 / 色相環、雷達色環、色彩量錶),抽象參數一看就懂在調什麼。",
       accent: "#22c55e",
       visualNote: "【示意圖待 UI 製作】左側區塊清單 + 滑桿調色,搭配色塊 / 色相環 / 量錶等視覺化輔助的示意。",
     },
@@ -2879,6 +2941,14 @@ export default function App() {
           70%  { opacity: .35; }
           100% { transform: translate(-50%,-50%) scale(1.8); opacity: 0; }
         }
+        /* [2026-06] 拖曳色彩控制項時,色相環中央的光圈:快進緩出 + 擴張到最外圈才消逝 —
+           0~13% 快速彈出並亮到最強(快進);13~82% 緩慢擴張並「持續保持明亮」;82~100% 抵達最外圈才淡出。 */
+        @keyframes averWheelFlash {
+          0%   { transform: translate(-50%,-50%) scale(.22); opacity: 0; }
+          13%  { transform: translate(-50%,-50%) scale(.55); opacity: .62; }
+          82%  { transform: translate(-50%,-50%) scale(1.8);  opacity: .55; }
+          100% { transform: translate(-50%,-50%) scale(1.98); opacity: 0; }
+        }
         /* 選中節點:從大縮入定位,像衝進環裡 */
         @keyframes averNodeShoot {
           0%   { transform: translate(-50%,-50%) scale(1.85); opacity: 0; filter: brightness(1.5); }
@@ -3087,9 +3157,49 @@ export default function App() {
                   「儲存/另存」動作不在此,而在調整區尾端,符合「調完各區塊→在終點存檔」的工作流。
                   Standard 為原廠卡(不可刪/不佔額度);使用者場景含名稱/備註/縮圖,上限 16。 */}
               <div id="aver-preset-save-block" style={{ width: 320, flexShrink: 0, display: "flex", flexDirection: "column", minHeight: 0, alignSelf: "stretch", background: "rgba(0,0,0,0.18)", border: `1px solid ${T.line}`, borderRadius: 8, padding: "14px 10px", boxSizing: "border-box" }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10, flexShrink: 0 }}>
-                  <span style={{ fontSize: 15, fontWeight: 600, color: T.text }}>場景檔</span>
-                  <span style={{ fontSize: 14, color: scenes.length >= 16 ? T.amber : T.faint, fontFamily: fMono }}>{scenes.length}/16</span>
+                {/* 2026-06 場景檔標頭:標題 + 計數 +（移入)當前套用場景 / 已修改未儲存狀態 */}
+                <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 10, flexShrink: 0 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <span style={{ fontSize: 15, fontWeight: 600, color: T.text }}>場景檔</span>
+                    <span style={{ fontSize: 14, color: scenes.length >= 16 ? T.amber : T.faint, fontFamily: fMono }}>{scenes.length}/16</span>
+                  </div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "nowrap" }}>
+                    <span style={{ fontSize: 13, fontWeight: 600, color: T.dim, flexShrink: 0 }}>當前套用：</span>
+                    <span style={{
+                      fontSize: 13,
+                      fontWeight: 700,
+                      minWidth: 0,
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      whiteSpace: "nowrap",
+                      color: activeScene === "std" ? T.blue : T.text,
+                      background: activeScene === "std" ? "rgba(30,155,240,0.1)" : "rgba(255,255,255,0.06)",
+                      padding: "3px 9px",
+                      borderRadius: 6,
+                      border: `1px solid ${activeScene === "std" ? "rgba(30,155,240,0.2)" : T.line}`
+                    }}>
+                      {activeScene === "std" ? "AVer (原廠預設)" : (scenes.find((x) => x.id === activeScene)?.name || "自訂場景")}
+                    </span>
+                    {/* [2026-06] 同排放不下,故「已修改未儲存」改用 icon 表示(與卡片上的 dirty 黃標一致),hover 顯示完整文字 */}
+                    {isDirty && (
+                      <span className="aver-fade" title="已修改未儲存" style={{
+                        flexShrink: 0,
+                        width: 18,
+                        height: 18,
+                        borderRadius: "50%",
+                        background: T.amber,
+                        color: "#fff",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        fontSize: 12,
+                        fontWeight: 900,
+                        lineHeight: 1,
+                        border: "1px solid rgba(255,255,255,0.85)",
+                        boxShadow: "0 1px 3px rgba(0,0,0,0.4)"
+                      }}>!</span>
+                    )}
+                  </div>
                 </div>
 
                 {/* 縮圖網格 — 點縮圖即載入 (已調整 padding 預留卡片發光空間) */}
@@ -3104,7 +3214,7 @@ export default function App() {
                   alignItems: "start", 
                   alignContent: "start" 
                 }}>
-                  <SceneTile thumb={stdThumb} name="AVer" factory active={activeScene === "std"} dirty={isDirty} onLoad={loadStandard} />
+                  <SceneTile thumb={STD_FIXED_THUMB} name="AVer" factory active={activeScene === "std"} dirty={isDirty} onLoad={loadStandard} />
                   {scenes.map((s) => (
                     <SceneTile key={s.id} thumb={s.thumb} name={s.name} remark={s.remark} active={activeScene === s.id} dirty={isDirty}
                       onLoad={() => loadScene(s)}
@@ -3113,9 +3223,28 @@ export default function App() {
                   ))}
                   {scenes.length === 0 && (
                     <div style={{ gridColumn: "1 / -1", border: `1.5px dashed ${T.line2}`, borderRadius: 8, padding: "14px 10px", textAlign: "center", color: T.faint, fontSize: 14, lineHeight: 1.6 }}>
-                      尚無自訂場景。<br />在下方控制台調整參數後，於控制台頂部另存。
+                      尚無自訂場景。<br />於下方控制台調整參數後，在本面板底部另存。
                     </div>
                   )}
+                </div>
+
+                {/* 2026-06 場景儲存動作列（由調整區頂部移入本面板，集中所有場景相關操作）。 */}
+                <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 10, paddingTop: 10, borderTop: `1px solid ${T.line}`, flexShrink: 0 }}>
+                  {isDirty && activeScene !== "std" && activeScene != null && (
+                    <button
+                      onClick={() => { const s = scenes.find((x) => x.id === activeScene); if (s) updateScene(s); }}
+                      style={{ flex: 1, padding: "8px 14px", fontSize: 14, fontWeight: 600, cursor: "pointer", borderRadius: 6, border: `1px solid ${T.blueDark}`, background: "rgba(30,155,240,0.12)", color: T.blue, fontFamily: fUI, transition: "all .15s" }}
+                    >
+                      儲存變更
+                    </button>
+                  )}
+                  <button
+                    onClick={() => { setSaveOpen((v) => !v); setEditingScene(null); setScName(""); setScRemark(""); }}
+                    disabled={!isDirty || scenes.length >= 16}
+                    style={{ flex: 1, padding: "8px 14px", fontSize: 14, fontWeight: 600, cursor: (!isDirty || scenes.length >= 16) ? "not-allowed" : "pointer", borderRadius: 6, border: "none", background: (!isDirty || scenes.length >= 16) ? "rgba(255, 255, 255, 0.08)" : T.blue, color: (!isDirty || scenes.length >= 16) ? T.faint : "#fff", fontFamily: fUI, opacity: (!isDirty || scenes.length >= 16) ? 0.45 : 1, transition: "all 0.28s cubic-bezier(0.16, 1, 0.3, 1)" }}
+                  >
+                    另存為新場景
+                  </button>
                 </div>
                 </div>
             </div>
@@ -3137,94 +3266,6 @@ export default function App() {
             boxSizing: "border-box" 
           }}>
             
-            {/* 2026-06-16 修改註記：固定高度並設定 flexWrap: "nowrap"，防止 isDirty 改變時因按鈕彈出或折行導致頂部列高度跳動 */}
-            <div id="aver-adjustments-top-bar" style={{
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-              padding: "0 20px",
-              height: 48,
-              minHeight: 48,
-              maxHeight: 48,
-              borderBottom: `1px solid ${T.line}`,
-              background: "rgba(0, 0, 0, 0.15)",
-              flexShrink: 0,
-              gap: 16,
-              flexWrap: "nowrap",
-              boxSizing: "border-box"
-            }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                <span style={{ fontSize: 14, fontWeight: 600, color: T.dim }}>當前套用場景：</span>
-                <span style={{ 
-                  fontSize: 14, 
-                  fontWeight: 700, 
-                  color: activeScene === "std" ? T.blue : T.text,
-                  background: activeScene === "std" ? "rgba(30,155,240,0.1)" : "rgba(255,255,255,0.06)",
-                  padding: "4px 10px",
-                  borderRadius: 6,
-                  border: `1px solid ${activeScene === "std" ? "rgba(30,155,240,0.2)" : T.line}`
-                }}>
-                  {activeScene === "std" ? "AVer (原廠預設)" : (scenes.find((x) => x.id === activeScene)?.name || "自訂場景")}
-                </span>
-                {isDirty && (
-                  <span className="aver-fade" style={{ 
-                    fontSize: 14, 
-                    fontWeight: 600, 
-                    color: T.amber, 
-                    background: "rgba(245,166,35,0.1)", 
-                    padding: "3px 8px", 
-                    borderRadius: 4, 
-                    border: `1px solid rgba(245,166,35,0.2)`
-                  }}>
-                    ● 已修改未儲存
-                  </span>
-                )}
-              </div>
-
-              <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                {isDirty && activeScene !== "std" && activeScene != null && (
-                  <button 
-                    onClick={() => { const s = scenes.find((x) => x.id === activeScene); if (s) updateScene(s); }} 
-                    style={{ 
-                      padding: "6px 14px", 
-                      fontSize: 14, 
-                      fontWeight: 600,
-                      cursor: "pointer", 
-                      borderRadius: 6, 
-                      border: `1px solid ${T.blueDark}`, 
-                      background: "rgba(30,155,240,0.12)", 
-                      color: T.blue, 
-                      fontFamily: fUI,
-                      transition: "all .15s"
-                    }}
-                  >
-                    儲存變更
-                  </button>
-                )}
-
-                <button 
-                  onClick={() => { setSaveOpen((v) => !v); setEditingScene(null); setScName(""); setScRemark(""); }} 
-                  disabled={!isDirty || scenes.length >= 16} 
-                  style={{ 
-                    padding: "6px 14px", 
-                    fontSize: 14, 
-                    fontWeight: 600,
-                    cursor: (!isDirty || scenes.length >= 16) ? "not-allowed" : "pointer", 
-                    borderRadius: 6, 
-                    border: "none", 
-                    background: (!isDirty || scenes.length >= 16) ? "rgba(255, 255, 255, 0.08)" : T.blue, 
-                    color: (!isDirty || scenes.length >= 16) ? T.faint : "#fff", 
-                    fontFamily: fUI,
-                    opacity: (!isDirty || scenes.length >= 16) ? 0.45 : 1,
-                    transition: "all 0.28s cubic-bezier(0.16, 1, 0.3, 1)"
-                  }}
-                >
-                  另存為新場景
-                </button>
-              </div>
-            </div>
-
-
             {/* 工作區容器 (包含左側 nav 與右側 controls) */}
             <div id="aver-adjustments-workspace" style={{ display: "flex", gap: 0, flex: 1, minHeight: 0, width: "100%" }}>
               
@@ -4135,7 +4176,8 @@ export default function App() {
           </div>
         )}
 
-        {/* 設計與版面雙重切換按鈕 (懸浮於畫面右側，最高層級) */}
+        {/* 右側懸浮工具(最高層級):Multi-Matrix 樣式切換鈕(僅 multi 區) + 導覽 i 鈕。
+            Matrix 視覺化與版面切換鈕已依 PM 定案移除。 */}
         {activeMenu === "paint" && (
           <div style={{ 
             position: "absolute", 
@@ -4149,24 +4191,9 @@ export default function App() {
             alignItems: "flex-end",
             pointerEvents: "none"
           }}>
-            {/* 雷達色相環設計樣式切換鈕 */}
-            {block === "multi" && (
-              <div style={{ pointerEvents: "auto", boxShadow: "0 4px 16px rgba(0, 0, 0, 0.6)", borderRadius: 6 }}>
-                {paintStyleToggle()}
-              </div>
-            )}
-            {/* Matrix 視覺化切換鈕(色塊 / 色相環) */}
-            {block === "matrix" && (
-              <div style={{ pointerEvents: "auto", boxShadow: "0 4px 16px rgba(0, 0, 0, 0.6)", borderRadius: 8 }}>
-                {matrixVizToggle()}
-              </div>
-            )}
-            {/* 版面切換鈕 */}
-            <div style={{ pointerEvents: "auto", boxShadow: "0 4px 16px rgba(0, 0, 0, 0.6)", borderRadius: 8 }}>
-              {paintLayoutToggle()}
-            </div>
-            {/* 導覽「i」按鈕 */}
-            {onbInfoBtn()}
+            {/* [PM 定案] Matrix 採「色相環」、Multi-Matrix 採「雷達色環2」、版面採「經典版面」,
+                對應的設計切換鈕(matrixVizToggle / paintStyleToggle / paintLayoutToggle)均已移除。 */}
+            {/* [2026-06 暫時移除 onboarding 流程] 導覽「i」按鈕已移除;需恢復時還原 {onbInfoBtn()}。 */}
           </div>
         )}
       </div>
