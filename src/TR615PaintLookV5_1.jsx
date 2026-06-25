@@ -2621,7 +2621,6 @@ export default function App() {
   const paintMonitor = () => (
     <div style={{ position: "relative", borderRadius: 10, overflow: "hidden", border: `1px solid ${T.line}`, background: "#000", flex: 1, minHeight: 0, width: "100%", boxSizing: "border-box", display: "flex", alignItems: "center", justifyContent: "center" }}>
       <canvas ref={preRef} width={SW} height={SH} style={{ width: "100%", height: "100%", display: "block", objectFit: "contain" }} />
-      <span style={{ position: "absolute", left: 12, top: 10, fontFamily: fMono, fontSize: 14, color: "rgba(255,255,255,.9)", textShadow: "0 1px 2px #000", fontWeight: 600, zIndex: 20 }}>{bypass ? "● BYPASS" : "● LIVE (Simulation)"}</span>
       <div style={{ position: "absolute", right: 12, top: 10, display: "flex", gap: 8, zIndex: 20 }}>
         <button onMouseDown={() => setBypass(true)} onMouseUp={() => setBypass(false)} onMouseLeave={() => setBypass(false)} onTouchStart={() => setBypass(true)} onTouchEnd={() => setBypass(false)}
           style={{ padding: "4px 10px", fontSize: 14, cursor: "pointer", borderRadius: 5, border: bypass ? `1px solid ${T.blue}` : "1px solid rgba(255,255,255,0.25)", background: bypass ? "rgba(30,155,240,0.85)" : "rgba(22,24,27,0.65)", color: bypass ? "#fff" : "rgba(255,255,255,0.9)", fontFamily: fUI, backdropFilter: "blur(4px)", transition: "all .15s" }}>
@@ -3167,9 +3166,6 @@ export default function App() {
                   
                   {/* 主要畫面 Canvas — 已修正為 React 物理屬性防抖動架構 */}
                   <canvas ref={preRef} width={SW} height={SH} style={{ width: "100%", height: "100%", display: "block", objectFit: "contain" }} />
-                  <span style={{ position: "absolute", left: 12, top: 10, fontFamily: fMono, fontSize: 14, color: "rgba(255,255,255,.9)", textShadow: "0 1px 2px #000", fontWeight: 600, zIndex: 20 }}>
-                    {bypass ? "● BYPASS" : "● LIVE (Simulation)"}
-                  </span>
                   
                   {/* Hold for Original按鈕 */}
                   <div style={{ position: "absolute", right: 12, top: 10, display: "flex", gap: 8, zIndex: 20 }}>
@@ -3454,7 +3450,6 @@ export default function App() {
                     {/* 內層 16:9 預覽區：高度 100% 填滿，寬度依 16:9 比例自適應，於左右留下黑邊 */}
                     <div style={{ position: "relative", height: "100%", width: "auto", aspectRatio: "16 / 9", overflow: "hidden" }}>
                       <div style={{ position: "absolute", inset: 0, backgroundImage: "url(meeting_room.png)", backgroundSize: "cover", backgroundPosition: "center" }} />
-                      <span style={{ position: "absolute", left: 12, top: 10, fontFamily: fMono, fontSize: 14, color: "rgba(255,255,255,.9)", textShadow: "0 1px 2px #000", fontWeight: 600, zIndex: 10 }}>● LIVE (Simulation)</span>
                     </div>
                   </div>
 
@@ -3598,7 +3593,6 @@ export default function App() {
                           transition: "filter .2s ease"
                         }}
                       />
-                      <span style={{ position: "absolute", left: 12, top: 10, fontFamily: fMono, fontSize: 13, color: "rgba(255,255,255,.9)", textShadow: "0 1px 2px #000", fontWeight: 600, zIndex: 10 }}>● LIVE (Simulation)</span>
                       <span style={{ position: "absolute", right: 12, top: 10, fontFamily: fMono, fontSize: 12, color: "rgba(255,255,255,.65)", textShadow: "0 1px 2px #000", zIndex: 10 }}>{EXP_MODES.find(([id]) => id === cam.expMode)[1]}</span>
                     </div>
                   </div>
