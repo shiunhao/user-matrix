@@ -2207,18 +2207,24 @@ export default function App() {
                     );
                   })}
 
-                  <div id="aver-wheel-center-controller" style={{ position: "absolute", inset: 68, borderRadius: "50%", background: "radial-gradient(circle at 38% 30%, #181c21, #0e1114)", border: `1px solid ${(isFocused || (multiStyle === "wheel2" && selAxis)) ? `hsl(${fHue} 60% 45%)` : T.line2}`, boxShadow: "inset 0 0 24px rgba(0,0,0,0.6)", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 2, transition: "border-color 0.48s cubic-bezier(0.16, 1, 0.3, 1)", zIndex: 20 }}>
+                  <div id="aver-wheel-center-controller" style={{ position: "absolute", inset: 68, borderRadius: "50%", background: "radial-gradient(circle at 38% 30%, #181c21, #0e1114)", border: `1px solid ${(isFocused || (multiStyle === "wheel2" && selAxis)) ? `hsl(${fHue} 60% 45%)` : T.line2}`, boxShadow: "inset 0 0 24px rgba(0,0,0,0.6)", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 2, padding: "0 12px", boxSizing: "border-box", transition: "border-color 0.48s cubic-bezier(0.16, 1, 0.3, 1)", zIndex: 20 }}>
                     {(isFocused || (multiStyle === "wheel2" && selAxis)) ? (
                       <>
-                        <span style={{ fontSize: 15, letterSpacing: 1.5, color: T.faint, fontFamily: fMono }}>{multiStyle === "wheel2" ? "Selected" : "Adjusting"}</span>
+                        <span style={{ fontSize: 12.5, letterSpacing: 0.8, color: T.faint, fontFamily: fMono, whiteSpace: "nowrap", width: "100%", textAlign: "center", textOverflow: "ellipsis", overflow: "hidden", display: "block" }}>{multiStyle === "wheel2" ? "Selected" : "Adjusting"}</span>
                         <span style={{ 
-                          fontSize: selAxis === "MG" ? 21 : selAxis === "YL" ? 23 : selAxis === "G" ? 25 : 27, 
+                          fontSize: selAxis === "MG" ? 17 : selAxis === "YL" ? 19 : selAxis === "G" ? 20 : 21, 
                           fontWeight: 700, 
                           color: T.text, 
                           lineHeight: 1.15,
-                          marginTop: 2
+                          marginTop: 2,
+                          whiteSpace: "nowrap",
+                          width: "100%",
+                          textAlign: "center",
+                          textOverflow: "ellipsis",
+                          overflow: "hidden",
+                          display: "block"
                         }}>{FULL_NAME[selAxis]}</span>
-                        <div style={{ display: "flex", gap: 14, marginTop: 6, fontFamily: fMono, fontSize: 17 }}>
+                        <div style={{ display: "flex", gap: 10, marginTop: 4, fontFamily: fMono, fontSize: 13.5, whiteSpace: "nowrap", justifyContent: "center", width: "100%" }}>
                           <span style={{ color: (multiStyle === "wheel2" ? st.axes[selAxis].hue : draftHue) ? T.blue : T.faint }}>
                             H {(multiStyle === "wheel2" ? st.axes[selAxis].hue : draftHue) > 0 ? "+" + (multiStyle === "wheel2" ? st.axes[selAxis].hue : draftHue) : (multiStyle === "wheel2" ? st.axes[selAxis].hue : draftHue)}
                           </span>
@@ -2229,12 +2235,12 @@ export default function App() {
                       </>
                     ) : (
                       <>
-                        <span style={{ fontSize: 16.5, letterSpacing: 2, color: T.faint, fontFamily: fMono }}>Select Hue Axis</span>
-                        <span style={{ fontSize: 26, fontWeight: 600, color: T.dim, lineHeight: 1.2, marginTop: 3 }}>6 Axes</span>
+                        <span style={{ fontSize: 12.5, letterSpacing: 1, color: T.faint, fontFamily: fMono, whiteSpace: "nowrap", width: "100%", textAlign: "center", textOverflow: "ellipsis", overflow: "hidden", display: "block" }}>Select Hue Axis</span>
+                        <span style={{ fontSize: 20, fontWeight: 600, color: T.dim, lineHeight: 1.2, marginTop: 2, whiteSpace: "nowrap", width: "100%", textAlign: "center", textOverflow: "ellipsis", overflow: "hidden", display: "block" }}>6 Axes</span>
                         {anyTouched ? (
-                          <span style={{ fontSize: 14.5, color: T.amber, marginTop: 4, fontFamily: fMono }}>● {touchedCount} Axes Adjusted</span>
+                          <span style={{ fontSize: 11.5, color: T.amber, marginTop: 3, fontFamily: fMono, whiteSpace: "nowrap", width: "100%", textAlign: "center", textOverflow: "ellipsis", overflow: "hidden", display: "block" }}>● {touchedCount} Axes Adjusted</span>
                         ) : (
-                          <span style={{ fontSize: 14, color: T.faint, marginTop: 4 }}>Click any node to adjust</span>
+                          <span style={{ fontSize: 11, color: T.faint, marginTop: 3, whiteSpace: "nowrap", width: "100%", textAlign: "center", textOverflow: "ellipsis", overflow: "hidden", display: "block" }}>Click any node to adjust</span>
                         )}
                       </>
                     )}
