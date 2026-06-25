@@ -978,19 +978,36 @@ const STD_FIXED_THUMB =
   "data:image/svg+xml;charset=utf-8," +
   encodeURIComponent(
     "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 160 90'>" +
-      "<defs><linearGradient id='g' x1='0' y1='0' x2='0' y2='1'>" +
-      "<stop offset='0' stop-color='#1b2027'/><stop offset='1' stop-color='#0d1014'/>" +
-      "</linearGradient></defs>" +
+      "<defs>" +
+        "<linearGradient id='g' x1='0' y1='0' x2='0' y2='1'>" +
+          "<stop offset='0' stop-color='#1b1e24'/><stop offset='1' stop-color='#0a0c0e'/>" +
+        "</linearGradient>" +
+      "</defs>" +
+      // 背景
       "<rect width='160' height='90' fill='url(#g)'/>" +
-      "<rect x='22' y='62' width='116' height='6' rx='3' fill='#2a3038'/>" +
-      "<rect x='22' y='62' width='19' height='6' fill='#3c434c'/>" +
-      "<rect x='41' y='62' width='19' height='6' fill='#555d67'/>" +
-      "<rect x='60' y='62' width='19' height='6' fill='#6f7882'/>" +
-      "<rect x='79' y='62' width='19' height='6' fill='#8a929c'/>" +
-      "<rect x='98' y='62' width='19' height='6' fill='#a6aeb8'/>" +
-      "<rect x='117' y='62' width='21' height='6' rx='3' fill='#c8ced5'/>" +
-      "<text x='80' y='40' fill='#e8edf2' font-family='Arial,Helvetica,sans-serif' font-size='18' font-weight='700' text-anchor='middle' letter-spacing='1'>AVer</text>" +
-      "<text x='80' y='52' fill='#7f8893' font-family='Arial,Helvetica,sans-serif' font-size='7' text-anchor='middle' letter-spacing='3'>STANDARD</text>" +
+      // 遠處牆壁上的電視顯示器
+      "<rect x='48' y='14' width='64' height='34' rx='2' fill='#0e1013' stroke='#22272e' stroke-width='1.2'/>" +
+      "<rect x='52' y='17' width='56' height='28' rx='1' fill='#14171c'/>" +
+      "<line x1='62' y1='31' x2='98' y2='31' stroke='#262c35' stroke-width='1' stroke-dasharray='3,2'/>" +
+      // 牆面裝飾邊線
+      "<line x1='15' y1='0' x2='15' y2='90' stroke='#15181d' stroke-width='1'/>" +
+      "<line x1='145' y1='0' x2='145' y2='90' stroke='#15181d' stroke-width='1'/>" +
+      // 中間三張遠處會議椅背
+      "<rect x='61' y='46' width='10' height='12' rx='2' fill='#111418' stroke='#1d2127' stroke-width='0.8'/>" +
+      "<rect x='75' y='46' width='10' height='12' rx='2' fill='#111418' stroke='#1d2127' stroke-width='0.8'/>" +
+      "<rect x='89' y='46' width='10' height='12' rx='2' fill='#111418' stroke='#1d2127' stroke-width='0.8'/>" +
+      // 會議桌
+      "<polygon points='16,90 144,90 112,54 48,54' fill='#1b1f25' stroke='#29303a' stroke-width='0.8'/>" +
+      // 近處兩張會議椅背 (左與右)
+      "<rect x='22' y='64' width='14' height='26' rx='3' fill='#13171d' stroke='#222831' stroke-width='0.8'/>" +
+      "<rect x='124' y='64' width='14' height='26' rx='3' fill='#13171d' stroke='#222831' stroke-width='0.8'/>" +
+      // 桌子中央的小麥克風圓盤
+      "<circle cx='80' cy='62' r='3' fill='#262c36'/>" +
+      "<circle cx='80' cy='62' r='1.2' fill='#171a21'/>" +
+      "<circle cx='66' cy='68' r='1.8' fill='#20252e'/>" +
+      "<circle cx='94' cy='68' r='1.8' fill='#20252e'/>" +
+      // AVer 浮水印
+      "<text x='80' y='33' fill='rgba(255,255,255,0.06)' font-family='Arial,sans-serif' font-size='8' font-weight='700' text-anchor='middle' letter-spacing='0.5'>AVer</text>" +
     "</svg>"
   );
 
