@@ -1503,6 +1503,9 @@ export default function App() {
       : (useDrag ? baseDragRef.current : baseRef.current);
     if (!base) return;
 
+    // 當開啟 bypass 時，調色參數應套用該 scene 載入時的原始/預設值
+    const activeSt = bypass ? getActiveSceneData() : st;
+
     const ctx = cvs.getContext("2d");
     const sd = base.data;
     let work = new Uint8ClampedArray(sd.length);
@@ -1510,29 +1513,29 @@ export default function App() {
     // --- 預先計算演算法常數，避免在像素大迴圈中重複計算或建立閉包 ---
     
     // 1. Tone 常數
-    const bl = st.black / 50 * 0.12;
-    const bg = (st.blackGamma || 0) / 50 * 0.08;
+    const bl = activeSt.black / 50 * 0.12;
+    const bg = (activeSt.blackGamma || 0) / 50 * 0.08;
     const kneeOn = true;
     let kp, slope;
-    if (st.autoKnee) {
+    if (activeSt.autoKnee) {
       kp = 85 / 109;
       slope = 0.35;
     } else {
-      kp = st.kneePoint / 109;
-      slope = 0.5 + (st.kneeSlope + 5) / 20;
+      kp = activeSt.kneePoint / 109;
+      slope = 0.5 + (activeSt.kneeSlope + 5) / 20;
     }
 
     // 2. Matrix 常數
     const matrixOn = true;
-    const levelOn = st.level !== 0;
-    const sat = 1 + st.level / 120;
-    const phaseOn = st.phase !== 0;
+    const levelOn = activeSt.level !== 0;
+    const sat = 1 + activeSt.level / 120;
+    const phaseOn = activeSt.phase !== 0;
     
     let m00 = 0, m01 = 0, m02 = 0;
     let m10 = 0, m11 = 0, m12 = 0;
     let m20 = 0, m21 = 0, m22 = 0;
     if (matrixOn && phaseOn) {
-      const deg = (st.phase / 99) * 30;
+      const deg = (activeSt.phase / 99) * 30;
       const a = (deg * Math.PI) / 180;
       const cosVal = Math.cos(a);
       const sinVal = Math.sin(a);
@@ -1548,20 +1551,21 @@ export default function App() {
     }
 
     const kMix = 0.75;
-    const m_rg = (st.rg / 100) * kMix;
-    const m_rb = (st.rb / 100) * kMix;
-    const m_gr = (st.gr / 100) * kMix;
-    const m_gb = (st.gb / 100) * kMix;
-    const m_br = (st.br / 100) * kMix;
-    const m_bg = (st.bg / 100) * kMix;
+    const m_rg = (activeSt.rg / 100) * kMix;
+    const m_rb = (activeSt.rb / 100) * kMix;
+    const m_gr = (activeSt.gr / 100) * kMix;
+    const m_gb = (activeSt.gb / 100) * kMix;
+    const m_br = (activeSt.br / 100) * kMix;
+    const m_bg = (activeSt.bg / 100) * kMix;
 
     // 3. Multi-Matrix 活躍軸預篩選
     const activeAxes = [];
     AXIS16.forEach((a) => {
       // 關鍵優化：如果在 focus 狀態下且當前選中這條軸，直接套用 draftHue 與 draftSat，實現調整當下即時預覽
-      const isCurrentAxis = isFocused && selAxis === a;
-      const hueVal = isCurrentAxis ? draftHue : (st.axes[a] ? st.axes[a].hue : 0);
-      const satVal = isCurrentAxis ? draftSat : (st.axes[a] ? st.axes[a].sat : 0);
+      // 注意：當 bypass 為 true 時，表示比對狀態，此時應使用原始場景的軸數值，不能套用聚焦草稿！
+      const isCurrentAxis = !bypass && isFocused && selAxis === a;
+      const hueVal = isCurrentAxis ? draftHue : (activeSt.axes[a] ? activeSt.axes[a].hue : 0);
+      const satVal = isCurrentAxis ? draftSat : (activeSt.axes[a] ? activeSt.axes[a].sat : 0);
       
       if (hueVal !== 0 || satVal !== 0) {
         activeAxes.push({
@@ -1579,97 +1583,95 @@ export default function App() {
       let G = sd[i + 1] / 255;
       let B = sd[i + 2] / 255;
       
-      if (!bypass) {
-        // A. 套用 Tone 控制
-        R = R + bl * (1 - R);
-        G = G + bl * (1 - G);
-        B = B + bl * (1 - B);
-        
-        // 套用 Black Gamma 暗部調整
-        R = R + bg * Math.pow(1 - R, 3.5);
-        G = G + bg * Math.pow(1 - G, 3.5);
-        B = B + bg * Math.pow(1 - B, 3.5);
-        if (kneeOn) {
-          if (R > kp) R = kp + (R - kp) * slope;
-          if (G > kp) G = kp + (G - kp) * slope;
-          if (B > kp) B = kp + (B - kp) * slope;
+      // A. 套用 Tone 控制
+      R = R + bl * (1 - R);
+      G = G + bl * (1 - G);
+      B = B + bl * (1 - B);
+      
+      // 套用 Black Gamma 暗部調整
+      R = R + bg * Math.pow(1 - R, 3.5);
+      G = G + bg * Math.pow(1 - G, 3.5);
+      B = B + bg * Math.pow(1 - B, 3.5);
+      if (kneeOn) {
+        if (R > kp) R = kp + (R - kp) * slope;
+        if (G > kp) G = kp + (G - kp) * slope;
+        if (B > kp) B = kp + (B - kp) * slope;
+      }
+
+      // B. 套用 Matrix 控制
+      if (matrixOn) {
+        // 色相旋轉 Phase
+        if (phaseOn) {
+          const rotR = R * m00 + G * m01 + B * m02;
+          const rotG = R * m10 + G * m11 + B * m12;
+          const rotB = R * m20 + G * m21 + B * m22;
+          R = rotR; G = rotG; B = rotB;
         }
-
-        // B. 套用 Matrix 控制
-        if (matrixOn) {
-          // 色相旋轉 Phase
-          if (phaseOn) {
-            const rotR = R * m00 + G * m01 + B * m02;
-            const rotG = R * m10 + G * m11 + B * m12;
-            const rotB = R * m20 + G * m21 + B * m22;
-            R = rotR; G = rotG; B = rotB;
-          }
-          // 混合矩陣
-          const nR = R + m_rg * (R - G) + m_rb * (R - B);
-          const nG = G + m_gr * (G - R) + m_gb * (G - B);
-          const nB = B + m_br * (B - R) + m_bg * (B - G);
-          R = nR; G = nG; B = nB;
-          // 飽和度 Level
-          if (levelOn) {
-            const Y = 0.2126 * R + 0.7152 * G + 0.0722 * B;
-            R = Y + (R - Y) * sat;
-            G = Y + (G - Y) * sat;
-            B = Y + (B - Y) * sat;
-          }
+        // 混合矩陣
+        const nR = R + m_rg * (R - G) + m_rb * (R - B);
+        const nG = G + m_gr * (G - R) + m_gb * (G - B);
+        const nB = B + m_br * (B - R) + m_bg * (B - G);
+        R = nR; G = nG; B = nB;
+        // 飽和度 Level
+        if (levelOn) {
+          const Y = 0.2126 * R + 0.7152 * G + 0.0722 * B;
+          R = Y + (R - Y) * sat;
+          G = Y + (G - Y) * sat;
+          B = Y + (B - Y) * sat;
         }
+      }
 
-        // C. 套用 Multi-Matrix 控制 (GC-free)
-        if (activeAxes.length > 0) {
-          // rgb2hsv
-          const mx = Math.max(R, G, B), mn = Math.min(R, G, B), d = mx - mn;
-          let h = 0;
-          if (d > 0) {
-            if (mx === R) h = ((G - B) / d) % 6;
-            else if (mx === G) h = (B - R) / d + 2;
-            else h = (R - G) / d + 4;
-            h *= 60;
-            if (h < 0) h += 360;
-          }
-          const sVal = mx === 0 ? 0 : d / mx;
-          const vVal = mx;
+      // C. 套用 Multi-Matrix 控制 (GC-free)
+      if (activeAxes.length > 0) {
+        // rgb2hsv
+        const mx = Math.max(R, G, B), mn = Math.min(R, G, B), d = mx - mn;
+        let h = 0;
+        if (d > 0) {
+          if (mx === R) h = ((G - B) / d) % 6;
+          else if (mx === G) h = (B - R) / d + 2;
+          else h = (R - G) / d + 4;
+          h *= 60;
+          if (h < 0) h += 360;
+        }
+        const sVal = mx === 0 ? 0 : d / mx;
+        const vVal = mx;
 
-          if (sVal >= 0.05) {
-            // 尋找距離最近的活躍軸
-            let bestAx = null;
-            let bd = 999;
-            for (let j = 0; j < activeAxes.length; j++) {
-              const axObj = activeAxes[j];
-              const dist = Math.abs(((axObj.hueAngle - h + 540) % 360) - 180);
-              if (dist < bd) {
-                bd = dist;
-                bestAx = axObj;
-              }
+        if (sVal >= 0.05) {
+          // 尋找距離最近的活躍軸
+          let bestAx = null;
+          let bd = 999;
+          for (let j = 0; j < activeAxes.length; j++) {
+            const axObj = activeAxes[j];
+            const dist = Math.abs(((axObj.hueAngle - h + 540) % 360) - 180);
+            if (dist < bd) {
+              bd = dist;
+              bestAx = axObj;
             }
+          }
+          
+          // 2026-06-16 修改註記：配合 6 Axes (間距 60°)，將影響半寬度 (falloff) 由 22.5° 修改為 30°
+          if (bestAx && bd < 30) {
+            const w = 1 - bd / 30; // 與 30° 軸間距對齊 (見 applyMulti 註解)
+            let newH = h + bestAx.hueAdj * w;
+            let newS = sVal * (1 + bestAx.satAdj * w);
+            if (newS > 1) newS = 1;
             
-            // 2026-06-16 修改註記：配合 6 Axes (間距 60°)，將影響半寬度 (falloff) 由 22.5° 修改為 30°
-            if (bestAx && bd < 30) {
-              const w = 1 - bd / 30; // 與 30° 軸間距對齊 (見 applyMulti 註解)
-              let newH = h + bestAx.hueAdj * w;
-              let newS = sVal * (1 + bestAx.satAdj * w);
-              if (newS > 1) newS = 1;
-              
-              // hsv2rgb
-              newH = ((newH % 360) + 360) % 360;
-              const c_val = vVal * newS;
-              const x_val = c_val * (1 - Math.abs(((newH / 60) % 2) - 1));
-              const m_val = vVal - c_val;
-              let r_val = 0, g_val = 0, b_val = 0;
-              if (newH < 60) { r_val = c_val; g_val = x_val; }
-              else if (newH < 120) { r_val = x_val; g_val = c_val; }
-              else if (newH < 180) { g_val = c_val; b_val = x_val; }
-              else if (newH < 240) { g_val = x_val; b_val = c_val; }
-              else if (newH < 300) { r_val = x_val; b_val = c_val; }
-              else { r_val = c_val; b_val = x_val; }
-              
-              R = r_val + m_val;
-              G = g_val + m_val;
-              B = b_val + m_val;
-            }
+            // hsv2rgb
+            newH = ((newH % 360) + 360) % 360;
+            const c_val = vVal * newS;
+            const x_val = c_val * (1 - Math.abs(((newH / 60) % 2) - 1));
+            const m_val = vVal - c_val;
+            let r_val = 0, g_val = 0, b_val = 0;
+            if (newH < 60) { r_val = c_val; g_val = x_val; }
+            else if (newH < 120) { r_val = x_val; g_val = c_val; }
+            else if (newH < 180) { g_val = c_val; b_val = x_val; }
+            else if (newH < 240) { g_val = x_val; b_val = c_val; }
+            else if (newH < 300) { r_val = x_val; b_val = c_val; }
+            else { r_val = c_val; b_val = x_val; }
+            
+            R = r_val + m_val;
+            G = g_val + m_val;
+            B = b_val + m_val;
           }
         }
       }
@@ -1680,8 +1682,8 @@ export default function App() {
       work[i + 3] = 255;
     }
     
-    if (!bypass && st.detail !== 0) {
-      work = applyDetail(work, currentW, currentH, st.detail);
+    if (activeSt.detail !== 0) {
+      work = applyDetail(work, currentW, currentH, activeSt.detail);
     }
     
     const out = new ImageData(work, currentW, currentH);
@@ -1810,7 +1812,7 @@ export default function App() {
         g.fillText("Dark", 5, 14); g.fillText("Bright", W - 20, 14);
       }
     }
-  }, [st, bypass, colorBars, scope, showScope, imgLoaded, isDragging, paintLayout, activeMenu, isFocused, selAxis, draftHue, draftSat]);
+  }, [st, bypass, colorBars, scope, showScope, imgLoaded, isDragging, paintLayout, activeMenu, isFocused, selAxis, draftHue, draftSat, scenes, activeScene]);
 
   useEffect(() => {
     if (block === "knee" || block === "black") setScope("wave");
