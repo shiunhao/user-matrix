@@ -4224,15 +4224,7 @@ export default function App() {
                     />
                   </div>
 
-                  <div>
-                    <div style={{ fontSize: 14, color: T.dim, marginBottom: 6 }}>Parameter Summary</div>
-                    <div style={{ fontFamily: fMono, fontSize: 14, color: T.dim, lineHeight: 1.7, padding: "10px 12px", background: "#101216", borderRadius: 8, border: `1px solid ${T.line}` }}>
-                      {summarize(es.data)}
-                      <div style={{ color: T.faint, marginTop: 6, borderTop: `1px solid ${T.line2}`, paddingTop: 6 }}>
-                        Saved at {es.savedAt} · Source: User Custom
-                      </div>
-                    </div>
-                  </div>
+
                 </div>
 
                 <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
