@@ -1144,7 +1144,7 @@ function SceneTile({ thumb, name, remark, active, dirty, factory, onLoad, onEdit
 export default function App() {
   const [st, setSt] = useState(JSON.parse(JSON.stringify(DEF)));
   const [block, setBlock] = useState("matrix");
-  const [selAxis, setSelAxis] = useState("R");
+  const [selAxis, setSelAxis] = useState(null);
   // [2026-06] 拖曳色彩控制項時,在 Multi-Matrix 色相環上放一個「由內而外、一閃而過」的光圈(沿用Radar Wheel focus 進場語彙)。
   // { axis, key },key 遞增以每次拖曳重播動畫。
   const [wheelFlash, setWheelFlash] = useState(null);
@@ -1220,6 +1220,12 @@ export default function App() {
       setShowOnboarding(true);
     }
   }, [activeMenu]);
+
+  // [2026-06] 當切換控制區塊 (block) 時，預設重置 Multi-Matrix 的選取狀態，使切換後預設為無點選任何 node 的狀態。
+  useEffect(() => {
+    setSelAxis(null);
+    setIsFocused(false);
+  }, [block]);
   // [聚焦態 草稿] Radar Wheel點進某軸後,Hue/Sat 先存草稿,色環即時預覽;按「OK」才寫入 st。
   const [draftHue, setDraftHue] = useState(0);
   const [draftSat, setDraftSat] = useState(0);
