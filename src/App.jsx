@@ -1,4 +1,4 @@
-import TR615PaintLook from './TR615PaintLookV5'
+import TR615PaintLook from './TR615PaintLookV5_1'
 
 function App() {
   return (

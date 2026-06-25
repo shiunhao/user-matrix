@@ -1,5 +1,5 @@
 /* ============================================================================
- * AVer TR615 — Camera & Paint/Look WEB UI 原型  (V5)
+ * AVer TR615 — Camera & Paint/Look WEB UI 原型  (V5.1)
  * ----------------------------------------------------------------------------
  * 用途:Pro AV PTZ 攝影機 TR615 之 WEB UI「Paint/Look」色彩調校介面原型。
  *       此為 UX/UI 設計原型 (React 單檔),非最終工程交付。色彩運算為前端 JS 模擬,
@@ -3574,7 +3574,20 @@ export default function App() {
                         <div style={{ flex: "0 0 140px", display: "flex", flexDirection: "column", gap: 4, padding: "0 12px 0 0", borderRight: `1px solid ${T.line}`, alignSelf: "stretch" }}>
                           {EXP_MODES.map(([id, lb]) => (
                             <button id={`aver-cam-btn-expmode-${id}`} key={id} onClick={() => updCam("expMode", id)}
-                              style={{ padding: "8px 10px", fontSize: 13, textAlign: "left", cursor: "pointer", borderRadius: 6, border: "none", background: cam.expMode === id ? T.blue : T.panel2, color: cam.expMode === id ? "#fff" : T.dim, fontWeight: cam.expMode === id ? 600 : 400, fontFamily: fUI }}>
+                              style={{
+                                padding: "8px 10px",
+                                fontSize: 13,
+                                textAlign: "left",
+                                cursor: "pointer",
+                                borderRadius: 6,
+                                border: cam.expMode === id ? `1px solid ${T.blue}` : "1px solid rgba(255, 255, 255, 0.10)",
+                                background: cam.expMode === id ? T.blue : "rgba(255, 255, 255, 0.03)",
+                                color: cam.expMode === id ? "#fff" : T.dim,
+                                fontWeight: cam.expMode === id ? 600 : 400,
+                                fontFamily: fUI,
+                                boxSizing: "border-box",
+                                height: "fit-content"
+                              }}>
                               {lb}
                             </button>
                           ))}
@@ -3612,7 +3625,7 @@ export default function App() {
                           }}>
                             <div style={{ fontSize: 12.5, color: T.text, marginBottom: 6, fontWeight: 600 }}>ND Filter</div>
                             <select id="aver-cam-select-nd-filter" value={cam.ndFilter} onChange={(e) => updCam("ndFilter", e.target.value)}
-                              style={{ width: "100%", padding: "6px 10px", fontSize: 13, borderRadius: 6, border: `1px solid ${T.line2}`, background: T.panel2, color: T.text, fontFamily: fUI, cursor: "pointer" }}>
+                              style={{ width: "100%", padding: "6px 10px", fontSize: 13, borderRadius: 6, border: "1px solid rgba(255, 255, 255, 0.15)", background: "rgba(255, 255, 255, 0.05)", color: T.text, fontFamily: fUI, cursor: "pointer", outline: "none" }}>
                               <option value="nd128">ND 1/128</option>
                               <option value="nd16">ND 1/16</option>
                               <option value="nd4">ND 1/4</option>
@@ -3621,7 +3634,18 @@ export default function App() {
                           </div>
                           <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 4 }}>
                             <button id="aver-cam-btn-exp-default" onClick={() => setCam({ ...CAM_DEFAULTS, tab: "exp" })}
-                              style={{ padding: "6px 16px", fontSize: 12, cursor: "pointer", borderRadius: 6, border: `1px solid ${T.line2}`, background: T.panel2, color: T.text, fontFamily: fUI }}>
+                              style={{
+                                padding: "6px 16px",
+                                fontSize: 12,
+                                cursor: "pointer",
+                                borderRadius: 6,
+                                border: "1px solid rgba(255, 255, 255, 0.15)",
+                                background: "rgba(255, 255, 255, 0.05)",
+                                color: T.text,
+                                fontFamily: fUI,
+                                boxSizing: "border-box",
+                                height: "fit-content"
+                              }}>
                               Default
                             </button>
                           </div>
@@ -3642,7 +3666,7 @@ export default function App() {
                           }}>
                             <div style={{ fontSize: 12.5, color: T.text, marginBottom: 6, fontWeight: 600 }}>White Balance</div>
                             <select id="aver-cam-select-wb-mode" value={cam.wbMode} onChange={(e) => updCam("wbMode", e.target.value)}
-                              style={{ width: "100%", padding: "6px 10px", fontSize: 13, borderRadius: 6, border: `1px solid ${T.line2}`, background: T.panel2, color: T.text, fontFamily: fUI, cursor: "pointer" }}>
+                              style={{ width: "100%", padding: "6px 10px", fontSize: 13, borderRadius: 6, border: "1px solid rgba(255, 255, 255, 0.15)", background: "rgba(255, 255, 255, 0.05)", color: T.text, fontFamily: fUI, cursor: "pointer", outline: "none" }}>
                               <option value="auto">AWB</option>
                               <option value="indoor">Indoor</option>
                               <option value="outdoor">Outdoor</option>
@@ -3670,7 +3694,19 @@ export default function App() {
                             alignItems: "center"
                           }}>
                             <button id="aver-cam-btn-onepush-set" disabled={cam.wbMode !== "onepush"}
-                              style={{ padding: "6px 14px", fontSize: 12, cursor: cam.wbMode === "onepush" ? "pointer" : "not-allowed", borderRadius: 6, border: `1px solid ${T.line2}`, background: T.panel2, color: cam.wbMode === "onepush" ? T.text : T.faint, fontFamily: fUI, flexShrink: 0 }}>
+                              style={{
+                                padding: "6px 14px",
+                                fontSize: 12,
+                                cursor: cam.wbMode === "onepush" ? "pointer" : "not-allowed",
+                                borderRadius: 6,
+                                border: cam.wbMode === "onepush" ? "1px solid rgba(255, 255, 255, 0.15)" : "1px solid rgba(255, 255, 255, 0.05)",
+                                background: cam.wbMode === "onepush" ? "rgba(255, 255, 255, 0.05)" : "rgba(255, 255, 255, 0.01)",
+                                color: cam.wbMode === "onepush" ? T.text : T.faint,
+                                fontFamily: fUI,
+                                flexShrink: 0,
+                                boxSizing: "border-box",
+                                height: "fit-content"
+                              }}>
                               Set
                             </button>
                             <span style={{ fontSize: 11, color: T.faint, lineHeight: 1.3 }}>AWB 'One push' set helper</span>
@@ -3695,13 +3731,28 @@ export default function App() {
                             boxSizing: "border-box"
                           }}>
                             <div style={{ fontSize: 12.5, color: T.text, marginBottom: 6, fontWeight: 600 }}>Noise Filter</div>
-                            <div style={{ display: "flex", justifyContent: "space-between", gap: 4 }}>
+                            <div style={{ display: "flex", justifyContent: "space-between", gap: 6, width: "100%" }}>
                               {[["off", "Off"], ["low", "Low"], ["medium", "Med"], ["high", "High"]].map(([id, lb]) => (
-                                <div id={`aver-cam-radio-noise-${id}`} key={id} onClick={() => updCam("noiseFilter", id)} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 5, cursor: "pointer", flex: 1 }}>
-                                  <span style={{ width: 14, height: 14, borderRadius: "50%", border: `1.5px solid ${cam.noiseFilter === id ? T.blue : T.line2}`, display: "flex", alignItems: "center", justifyContent: "center" }}>
-                                    {cam.noiseFilter === id && <span style={{ width: 6, height: 6, borderRadius: "50%", background: T.blue }} />}
+                                <div id={`aver-cam-radio-noise-${id}`} key={id} onClick={() => updCam("noiseFilter", id)}
+                                  style={{
+                                    display: "flex",
+                                    alignItems: "center",
+                                    justifyContent: "center",
+                                    gap: 6,
+                                    cursor: "pointer",
+                                    flex: 1,
+                                    padding: "6px 4px",
+                                    borderRadius: 6,
+                                    border: cam.noiseFilter === id ? `1px solid ${T.blue}` : "1px solid rgba(255, 255, 255, 0.10)",
+                                    background: cam.noiseFilter === id ? T.blue : "rgba(255, 255, 255, 0.03)",
+                                    boxSizing: "border-box",
+                                    height: "fit-content",
+                                    transition: "all 0.15s ease"
+                                  }}>
+                                  <span style={{ width: 10, height: 10, borderRadius: "50%", border: `1.5px solid ${cam.noiseFilter === id ? "#fff" : T.line2}`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                                    {cam.noiseFilter === id && <span style={{ width: 4, height: 4, borderRadius: "50%", background: "#fff" }} />}
                                   </span>
-                                  <span style={{ fontSize: 11, color: cam.noiseFilter === id ? T.text : T.dim }}>{lb}</span>
+                                  <span style={{ fontSize: 11.5, color: cam.noiseFilter === id ? "#fff" : T.dim, fontWeight: cam.noiseFilter === id ? 600 : 400 }}>{lb}</span>
                                 </div>
                               ))}
                             </div>
@@ -3715,7 +3766,18 @@ export default function App() {
                           
                           <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 4 }}>
                             <button id="aver-cam-btn-img-default" onClick={() => setCam({ ...CAM_DEFAULTS, tab: "img" })}
-                              style={{ padding: "6px 16px", fontSize: 12, cursor: "pointer", borderRadius: 6, border: `1px solid ${T.line2}`, background: T.panel2, color: T.text, fontFamily: fUI }}>
+                              style={{
+                                padding: "6px 16px",
+                                fontSize: 12,
+                                cursor: "pointer",
+                                borderRadius: 6,
+                                border: "1px solid rgba(255, 255, 255, 0.15)",
+                                background: "rgba(255, 255, 255, 0.05)",
+                                color: T.text,
+                                fontFamily: fUI,
+                                boxSizing: "border-box",
+                                height: "fit-content"
+                              }}>
                               Default
                             </button>
                           </div>
