@@ -2623,7 +2623,7 @@ export default function App() {
       <canvas ref={preRef} width={SW} height={SH} style={{ width: "100%", height: "100%", display: "block", objectFit: "contain" }} />
       <div style={{ position: "absolute", right: 12, top: 10, display: "flex", gap: 8, zIndex: 20 }}>
         <button onMouseDown={() => setBypass(true)} onMouseUp={() => setBypass(false)} onMouseLeave={() => setBypass(false)} onTouchStart={() => setBypass(true)} onTouchEnd={() => setBypass(false)}
-          style={{ padding: "4px 10px", fontSize: 14, cursor: "pointer", borderRadius: 5, border: bypass ? `1px solid ${T.blue}` : "1px solid rgba(255,255,255,0.25)", background: bypass ? "rgba(30,155,240,0.85)" : "rgba(22,24,27,0.65)", color: bypass ? "#fff" : "rgba(255,255,255,0.9)", fontFamily: fUI, backdropFilter: "blur(4px)", transition: "all .15s" }}>
+          style={{ width: 132, padding: "4px 0", textAlign: "center", fontSize: 14, cursor: "pointer", borderRadius: 5, border: bypass ? `1px solid ${T.blue}` : "1px solid rgba(255,255,255,0.25)", background: bypass ? "rgba(30,155,240,0.85)" : "rgba(22,24,27,0.65)", color: bypass ? "#fff" : "rgba(255,255,255,0.9)", fontFamily: fUI, backdropFilter: "blur(4px)", transition: "all .15s" }}>
           {bypass ? "Original" : "Hold for Original"}
         </button>
       </div>
@@ -3176,7 +3176,7 @@ export default function App() {
                       onTouchStart={() => setBypass(true)} 
                       onTouchEnd={() => setBypass(false)}
                       style={{ 
-                        padding: "4px 10px", fontSize: 14, cursor: "pointer", 
+                        width: 132, padding: "4px 0", textAlign: "center", fontSize: 14, cursor: "pointer", 
                         borderRadius: 5, border: bypass ? `1px solid ${T.blue}` : "1px solid rgba(255,255,255,0.25)", 
                         background: bypass ? "rgba(30,155,240,0.85)" : "rgba(22,24,27,0.65)", 
                         color: bypass ? "#fff" : "rgba(255,255,255,0.9)", fontFamily: fUI, 
