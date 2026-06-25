@@ -3669,10 +3669,10 @@ export default function App() {
             })()}
           </div>
         ) : (
-          <div id="aver-video-audio-wrapper" key="video" className="aver-fade" style={{ display: "flex", flexDirection: "column", gap: 12, width: "100%", maxWidth: "1350px", margin: "0 auto", height: "100%", minHeight: 0, overflow: "hidden" }}>
+          <div id="aver-video-audio-wrapper" key="video" className="aver-fade" style={{ display: "flex", flexDirection: "column", gap: 12, width: "100%", maxWidth: "1350px", margin: "0 auto", height: "100%", overflowY: "auto", paddingRight: 8, boxSizing: "border-box" }}>
             
-            {/* Video & Audio 設置區滾動容器 */}
-            <div style={{ flex: 1, overflowY: "auto", display: "flex", flexDirection: "column", gap: 14, paddingRight: 4, minHeight: 0 }}>
+            {/* Video & Audio 設置區容器 */}
+            <div style={{ display: "flex", flexDirection: "column", gap: 14, width: "100%" }}>
               
               {/* 頂部的三個獨立 FormField 欄位，寬度與下方 Stream Video Output 相同 */}
               <div style={{ display: "flex", flexDirection: "column", gap: 10, width: "100%" }}>
