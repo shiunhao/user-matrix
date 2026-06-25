@@ -3628,10 +3628,10 @@ export default function App() {
                             <div style={{ fontSize: 12.5, color: T.text, marginBottom: 6, fontWeight: 600 }}>ND Filter</div>
                             <select id="aver-cam-select-nd-filter" value={cam.ndFilter} onChange={(e) => updCam("ndFilter", e.target.value)}
                               style={{ width: "100%", padding: "6px 10px", fontSize: 13, borderRadius: 6, border: "1px solid rgba(255, 255, 255, 0.15)", background: "rgba(255, 255, 255, 0.05)", color: T.text, fontFamily: fUI, cursor: "pointer", outline: "none" }}>
-                              <option value="nd128">ND 1/128</option>
-                              <option value="nd16">ND 1/16</option>
-                              <option value="nd4">ND 1/4</option>
-                              <option value="clear">ND Clear</option>
+                              <option value="nd128" style={{ background: "#1a1d21", color: "#fff" }}>ND 1/128</option>
+                              <option value="nd16" style={{ background: "#1a1d21", color: "#fff" }}>ND 1/16</option>
+                              <option value="nd4" style={{ background: "#1a1d21", color: "#fff" }}>ND 1/4</option>
+                              <option value="clear" style={{ background: "#1a1d21", color: "#fff" }}>ND Clear</option>
                             </select>
                           </div>
                           <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 4 }}>
@@ -3669,11 +3669,11 @@ export default function App() {
                             <div style={{ fontSize: 12.5, color: T.text, marginBottom: 6, fontWeight: 600 }}>White Balance</div>
                             <select id="aver-cam-select-wb-mode" value={cam.wbMode} onChange={(e) => updCam("wbMode", e.target.value)}
                               style={{ width: "100%", padding: "6px 10px", fontSize: 13, borderRadius: 6, border: "1px solid rgba(255, 255, 255, 0.15)", background: "rgba(255, 255, 255, 0.05)", color: T.text, fontFamily: fUI, cursor: "pointer", outline: "none" }}>
-                              <option value="auto">AWB</option>
-                              <option value="indoor">Indoor</option>
-                              <option value="outdoor">Outdoor</option>
-                              <option value="onepush">One Push</option>
-                              <option value="manual">Manual</option>
+                              <option value="auto" style={{ background: "#1a1d21", color: "#fff" }}>AWB</option>
+                              <option value="indoor" style={{ background: "#1a1d21", color: "#fff" }}>Indoor</option>
+                              <option value="outdoor" style={{ background: "#1a1d21", color: "#fff" }}>Outdoor</option>
+                              <option value="onepush" style={{ background: "#1a1d21", color: "#fff" }}>One Push</option>
+                              <option value="manual" style={{ background: "#1a1d21", color: "#fff" }}>Manual</option>
                             </select>
                           </div>
 
