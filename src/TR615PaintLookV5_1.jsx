@@ -2836,6 +2836,40 @@ export default function App() {
     <div id="aver-paint-look-root" style={{ position: "relative", background: T.page, width: "100%", height: "100vh", fontFamily: fUI, color: T.text, display: "flex", overflow: "hidden" }}>
       {/* 注入控制滑桿樣式與色環旋轉動畫 */}
       <style>{`
+        /* 縮放 125% 與低高度螢幕適配滾動 */
+        @media (max-height: 860px) {
+          #aver-main-stage {
+            overflow-y: auto !important;
+            padding-right: 8px !important;
+          }
+          #aver-content-wrapper {
+            height: auto !important;
+            min-height: 100% !important;
+          }
+          .aver-classic-layout-entrance {
+            height: auto !important;
+            min-height: 100% !important;
+            gap: 14px !important;
+          }
+          #aver-preview-preset-panel {
+            flex: none !important;
+            height: 380px !important;
+          }
+          #aver-adjustments-panel {
+            flex: none !important;
+            height: 350px !important;
+            min-height: 350px !important;
+          }
+          .aver-cinema-layout-entrance {
+            height: auto !important;
+            min-height: 100% !important;
+          }
+          .aver-cinema-layout-entrance > div:first-child {
+            flex: none !important;
+            height: 480px !important;
+          }
+        }
+
         /* 佈局切換變形過渡動畫 */
         @keyframes averClassicEntrance {
           0% { opacity: 0; transform: scale(0.97) translateY(12px); filter: blur(4px); }
