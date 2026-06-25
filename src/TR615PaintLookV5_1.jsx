@@ -6,16 +6,16 @@
  *       實機由韌體 DSP 處理;原型的示波器/畫面僅供互動展示。
  *
  * 【V5 主要設計決策與變更摘要】(供接手者快速理解)
- *  1. Scene File(場景檔):
- *     - 升級為「場景庫」:原廠 Standard 卡(不可刪/不佔額度)+ 使用者自訂場景(名稱/備註/縮圖,上限16)。
- *     - 與 Live View 整合為 filmstrip;場景條為「純取用層」(載入/編輯/刪除),
+ *  1. Scene File(Scenes):
+ *     - 升級為「場景庫」:原廠 Standard 卡(不可刪/不佔額度)+ 使用者Custom Scene(名稱/備註/縮圖,上限16)。
+ *     - 與 Live View 整合為 filmstrip;場景條為「純取用層」(載入/編輯/Delete),
  *       「儲存/另存」動作放在調整區,符合「調完才存」的工作流。
  *     - dirty(已修改)採整個 st 狀態深度比對 → block 的 on/off 也算修改(理由見該處註解)。
  *  2. Multi-Matrix 提供三種 UX 呈現 (供設計比較,可切換):
- *     - 雷達色環:選擇態(16軸等分環)↔ 聚焦態(只留選中軸、整環變該色相)。
- *     - 推桿台:16 軸 × S/H 雙直立推桿(混音台風格,命中區大、適合大幅塑形)。
+ *     - Radar Wheel:選擇態(16軸等分環)↔ 聚焦態(只留選中軸、整環變該色相)。
+ *     - 推桿台:16 Axes × S/H 雙直立推桿(混音台風格,命中區大、適合大幅塑形)。
  *     - 色卡矩陣:2×8 卡片密集網格(數值精確、總覽)。
- *  3. 16 軸色相:等分 22.5°(已查證,見 AXIS_HUE 註解);全域 AXIS_HUE 與環顯示一致,
+ *  3. 16 Axes色相:等分 22.5°(已查證,見 AXIS_HUE 註解);全域 AXIS_HUE 與環顯示一致,
  *     影響範圍 falloff 亦對齊 22.5°。各軸「精確相位角」待韌體定義。
  *  4. 監看(示波器)三種:向量 / 波形 / 直方圖。向量鏡與波形為真實廣播工具
  *     (向量鏡含 75% 色靶概念與膚色線、波形為 0–100 IRE),但本原型的繪製為「示意級」,
@@ -27,7 +27,7 @@
  *  7. 預覽圖:優先載入 /meeting_room.png,失敗則用程式繪製的 fallback 場景(可攜性)。
  *
  * 【待 PM / 韌體釐清】(散見各處 [PM] 標記)
- *  - Multi-Matrix 16 軸各自的精確相位角與涵蓋範圍(以韌體為準)。
+ *  - Multi-Matrix 16 Axes各自的精確相位角與涵蓋範圍(以韌體為準)。
  *  - Scene dirty 是否須以「實際影響畫面的有效值」為準(目前 on/off 即算修改)。
  *  - Standard 是獨立原廠預設還是佔 Scene File 第 1 槽(韌體規格寫 1-16)。
  *  - 雙重 Saturation(Image Process 與 Multi-Matrix)疊加順序。
@@ -90,13 +90,13 @@ function hueRotate(r, g, b, deg) {
   ];
 }
 
-// 根據 Sony 廣播級攝影機標準定義 of 16 軸色彩順序
-// [2026-06-16 修改] 色相環選擇顏色設定從 12/16 軸改為 6 軸，移除過渡軸，僅保留 R, YL, G, CY, B, MG 6 個經典顏色。
+// 根據 Sony 廣播級攝影機標準定義 of 16 Axes色彩順序
+// [2026-06-16 修改] 色相環選擇顏色Set從 12/16 Axes改為 6 Axes，移除過渡軸，僅保留 R, YL, G, CY, B, MG 6 個經典顏色。
 const AXIS16 = ["R", "YL", "G", "CY", "B", "MG"];
 const AXIS_NAME = { R: "Red", YL: "Yellow", G: "Green", CY: "Cyan", B: "Blue", MG: "Magenta" };
 
-// 6 軸對應的基礎色相角度 (0-360)。
-// [設計決策 / 已查證] 6 軸「等分」於色相環,每軸間隔 60° (360°÷6)。
+// 6 Axes對應的基礎色相角度 (0-360)。
+// [設計決策 / 已查證] 6 Axes「等分」於色相環,每軸間隔 60° (360°÷6)。
 // [變更歷史] 先前曾誤用非均勻的 HSL 近似值，現已更正為等分計算。
 const AXIS_HUE = (() => {
   const o = {}; const idxR = AXIS16.indexOf("R");
@@ -131,14 +131,14 @@ function applyMatrix(R, G, B, m) {
 }
 
 /**
- * 應用 16 軸 Multi-Matrix 局部色彩調整
+ * 應用 16 Axes Multi-Matrix 局部色彩調整
  * 僅對最接近的兩個色相區間做平滑插值(Interpolation)調整，不影響其他色區
  */
 function applyMulti(R, G, B, axes) {
   let [h, s, v] = rgb2hsv(R, G, B);
   if (s < 0.05) return [R, G, B]; // 忽略極低飽和度區（接近灰色/黑白的像素）
 
-  // 尋找色相距離最近 of 16 軸節點
+  // 尋找色相距離最近 of 16 Axes節點
   let best = 0, bd = 999;
   AXIS16.forEach((a, i) => {
     let d = Math.abs(((AXIS_HUE[a] - h + 540) % 360) - 180);
@@ -148,7 +148,7 @@ function applyMulti(R, G, B, axes) {
   const ax = axes[AXIS16[best]];
   if (!ax || (ax.hue === 0 && ax.sat === 0)) return [R, G, B];
 
-  // [2026-06-16 修改] 影響範圍 (半寬) 改與 6 軸間距 60° 對齊，即半寬 30°；最大偏轉角度調整為約 30°
+  // [2026-06-16 修改] 影響範圍 (半寬) 改與 6 Axes間距 60° 對齊，即半寬 30°；最大偏轉角度調整為約 30°
   const w = Math.max(0, 1 - bd / 30);
   h += (ax.hue / 99) * 30 * w;
   s *= 1 + (ax.sat / 99) * 0.85 * w;
@@ -317,12 +317,12 @@ const fMono = "'Consolas','Courier New',monospace";
 
 // 主要功能選單區塊定義
 const BLOCKS = [
-  ["matrix", "Matrix", "Matrix 色彩矩陣"],
-  // 2026-06-16 修改註記：將 Multi-Matrix 描述由 16 軸改為 6 軸
-  ["multi", "Multi-Matrix", "6 軸分區色彩"],
+  ["matrix", "Matrix", "Matrix Color Matrix"],
+  // 2026-06-16 修改註記：將 Multi-Matrix 描述由 16 Axes改為 6 Axes
+  ["multi", "Multi-Matrix", "6-Axis Color Correction"],
   // 2026-06 [PM 定案] 移除 Detail 分頁(render 分支與 applyDetail 效果保留為無作用 dead code,st.detail 維持預設 0)
-  ["knee", "Knee", "高光壓縮"],
-  ["black", "Black Level", "黑位準"],
+  ["knee", "Knee", "Highlight Compression"],
+  ["black", "Black Level", "Black Level"],
 ];
 
 // Matrix 六色軸係數鍵值與中文提示
@@ -343,7 +343,7 @@ const DEF_AXES = () => {
   return o;
 };
 
-// 預設的標準原廠設定值 (Standard / Neutral Preset)
+// 預設的標準原廠Set值 (Standard / Neutral Preset)
 const DEF = {
   matrixOn: false, level: 0, phase: 0, rg: 0, rb: 0, gr: 0, gb: 0, br: 0, bg: 0,
   multiOn: false, axes: DEF_AXES(),
@@ -404,7 +404,7 @@ function hexLerp(a, b, t) {
   const c = pa.map((v, i) => Math.round(v + (pb[i] - v) * t));
   return `rgb(${c[0]},${c[1]},${c[2]})`;
 }
-// 每條參數的視覺設定:type=shift(來源X→目標Y偏移) / intensity(向外擴張) / rotate(繞圈)
+// 每條參數的視覺Set:type=shift(來源X→目標Y偏移) / intensity(向外擴張) / rotate(繞圈)
 const MATRIX_VIS = {
   level: { type: "intensity" },
   phase: { type: "rotate" },
@@ -503,7 +503,7 @@ function MatrixRing({ level, phase, rg, rb, gr, gb, br, bg }) {
       <div style={{ position: "absolute", inset: "22%", borderRadius: "50%", background: "radial-gradient(circle at 38% 30%, #181c21, #0e1114)", border: `1px solid ${anyMoved ? "rgba(30,155,240,0.4)" : "rgba(255,255,255,0.12)"}`, boxShadow: "inset 0 0 18px rgba(0,0,0,0.6)", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 2, transition: "border-color .4s ease" }}>
         <span style={{ fontSize: 13, letterSpacing: 1.5, color: "rgba(255,255,255,0.42)", fontFamily: "monospace" }}>Matrix</span>
         <span style={{ fontSize: 23, fontWeight: 700, color: "rgba(255,255,255,0.88)", lineHeight: 1.1, marginTop: 1 }}>RGB</span>
-        <span style={{ fontSize: 12, color: anyMoved ? "#f5a623" : "rgba(255,255,255,0.32)", fontFamily: "monospace", marginTop: 2 }}>{anyMoved ? "● 已調整" : "3 主色串擾"}</span>
+        <span style={{ fontSize: 12, color: anyMoved ? "#f5a623" : "rgba(255,255,255,0.32)", fontFamily: "monospace", marginTop: 2 }}>{anyMoved ? "● Adjusted" : "3 Primary Crosstalk"}</span>
       </div>
     </div>
   );
@@ -703,7 +703,7 @@ function ColorGauge({ label, gain, hue, col, disabled, onGain, onHue, startDrag,
  */
 function Toggle({ on, onChange, label }) {
   // 2026-06-16 修改註記：為了解決 ON / OFF 寬度不同與 button:active 造成 UI 跳動的問題，
-  // 將 button 標籤改為 div，並為 ON / OFF 設定固定寬度 (32px)
+  // 將 button 標籤改為 div，並為 ON / OFF Set固定寬度 (32px)
   const isOnOff = label === "ON" || label === "OFF";
   const labelStyle = isOnOff
     ? { fontSize: 14, color: on ? T.text : T.dim, width: 32, display: "inline-block", textAlign: "left" }
@@ -994,11 +994,11 @@ function BodySlider({ val, min, max, onChange }) {
 
 // [2026-06 Task3] 「AVer 原廠預設」卡片改用固定示意圖,不從 live 畫面擷取。
 // RD 疑慮:原廠卡縮圖無明確擷取時機(開機抓?哪個時間點?),不合理;故以一張固定設計圖示意。
-// 其餘使用者場景仍於「另存新場景」當下擷取 live 畫面。此為設計用占位圖,實作時可換成 RD 提供的正式素材。
+// 其餘使用者場景仍於「Save as New Scene」當下擷取 live 畫面。此為設計用占位圖,實作時可換成 RD 提供的正式素材。
 const STD_FIXED_THUMB = "aver_default_meeting_room.png";
 
 /**
- * 右側場景檔的小方塊縮圖按鈕 (Scene Select Grid Tile)
+ * 右側Scenes的小方塊縮圖按鈕 (Scene Select Grid Tile)
  */
 function SceneTile({ thumb, name, remark, active, dirty, factory, onLoad, onEdit, onDelete }) {
   return (
@@ -1031,8 +1031,8 @@ function SceneTile({ thumb, name, remark, active, dirty, factory, onLoad, onEdit
         )}
         
         <div onClick={onLoad} title={remark || name} style={{ cursor: "pointer" }}>
-          {/* [2026-06 Task2] 縮圖高度由 16/9 比例改為固定 50px,讓場景檔面板完整高度可一次容納約 6 張卡。
-              標題列與編輯/刪除按鈕維持原尺寸(不再縮小)。 */}
+          {/* [2026-06 Task2] 縮圖高度由 16/9 比例改為固定 50px,讓Scenes面板完整高度可一次容納約 6 張卡。
+              標題列與編輯/Delete按鈕維持原尺寸(不再縮小)。 */}
           <div style={{ position: "relative", height: 50, background: "#0a0c0e" }}>
             {thumb ? (
               <img 
@@ -1054,10 +1054,10 @@ function SceneTile({ thumb, name, remark, active, dirty, factory, onLoad, onEdit
                 color: T.faint, 
                 fontSize: 14
               }}>
-                無縮圖
+                No Thumbnail
               </div>
             )}
-            {/* 取消藍色勾勾：只在 active 且有修改未儲存 (dirty) 時，才在最上層顯示黃色的驚嘆號警告標記 */}
+            {/* Cancel藍色勾勾：只在 active 且有修改未儲存 (dirty) 時，才在最上層顯示黃色的驚嘆號警告標記 */}
             {active && dirty && (
               <span style={{ 
                 position: "absolute", 
@@ -1097,7 +1097,7 @@ function SceneTile({ thumb, name, remark, active, dirty, factory, onLoad, onEdit
               <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
                 <button 
                   onClick={(e) => { e.stopPropagation(); onEdit(); }} 
-                  title="編輯名稱與備註" 
+                  title="Edit Name and Note" 
                   style={{ 
                     background: "none", 
                     border: "none", 
@@ -1114,7 +1114,7 @@ function SceneTile({ thumb, name, remark, active, dirty, factory, onLoad, onEdit
                 </button>
                 <button 
                   onClick={(e) => { e.stopPropagation(); onDelete(); }} 
-                  title="刪除" 
+                  title="Delete" 
                   style={{ 
                     background: "none", 
                     border: "none", 
@@ -1145,14 +1145,14 @@ export default function App() {
   const [st, setSt] = useState(JSON.parse(JSON.stringify(DEF)));
   const [block, setBlock] = useState("matrix");
   const [selAxis, setSelAxis] = useState("R");
-  // [2026-06] 拖曳色彩控制項時,在 Multi-Matrix 色相環上放一個「由內而外、一閃而過」的光圈(沿用雷達色環 focus 進場語彙)。
+  // [2026-06] 拖曳色彩控制項時,在 Multi-Matrix 色相環上放一個「由內而外、一閃而過」的光圈(沿用Radar Wheel focus 進場語彙)。
   // { axis, key },key 遞增以每次拖曳重播動畫。
   const [wheelFlash, setWheelFlash] = useState(null);
   const triggerWheelFlash = (axis) => setWheelFlash((b) => ({ axis, key: (b?.key || 0) + 1 }));
   const [scenes, setScenes] = useState([]);            
   const [activeScene, setActiveScene] = useState("std"); 
   
-  // 深度比對當前狀態與載入場景資料，以即時判定設定是否被修改過 (isDirty)
+  // 深度比對當前狀態與載入場景資料，以即時判定Set是否被修改過 (isDirty)
   const getActiveSceneData = () => {
     if (activeScene === "std") return DEF;
     const curSc = scenes.find((x) => x.id === activeScene);
@@ -1201,11 +1201,11 @@ export default function App() {
   const [trackMode, setTrackMode] = useState("hybrid");
   const [trkFace, setTrkFace] = useState(false);
 
-  // Multi-Matrix 樣式狀態："wheel" (雷達色環), "eq" (色彩等化器)
+  // Multi-Matrix 樣式狀態："wheel" (Radar Wheel), "eq" (色彩等化器)
 
   // Multi-Matrix 聚焦態
   const [isFocused, setIsFocused] = useState(false);
-  const [multiStyle, setMultiStyle] = useState("wheel2"); // [PM 定案] Multi-Matrix 採「雷達色環2」方案;切換鈕已移除,預設鎖定 wheel2(wheel / strip 分支保留為相容備用)
+  const [multiStyle, setMultiStyle] = useState("wheel2"); // [PM 定案] Multi-Matrix 採「Radar Wheel 2」方案;切換鈕已移除,預設鎖定 wheel2(wheel / strip 分支保留為相容備用)
   const [matrixViz, setMatrixViz] = useState("ring"); // [PM 定案] Matrix 採「色相環」方案;切換鈕已移除,預設鎖定 ring(swatch 分支保留為相容備用)
   // ===== Paint/Look Onboarding 引導 =====
   const [showOnboarding, setShowOnboarding] = useState(false);
@@ -1220,7 +1220,7 @@ export default function App() {
       setShowOnboarding(true);
     }
   }, [activeMenu]);
-  // [聚焦態 草稿] 雷達色環點進某軸後,Hue/Sat 先存草稿,色環即時預覽;按「確定」才寫入 st。
+  // [聚焦態 草稿] Radar Wheel點進某軸後,Hue/Sat 先存草稿,色環即時預覽;按「OK」才寫入 st。
   const [draftHue, setDraftHue] = useState(0);
   const [draftSat, setDraftSat] = useState(0);
   const [focusClosing, setFocusClosing] = useState(false); // 退出聚焦態的退場動畫旗標
@@ -1237,7 +1237,7 @@ export default function App() {
     const cx = rect.left + rect.width / 2, cy = rect.top + rect.height / 2;
     const dx = e.clientX - cx, dy = e.clientY - cy;
     const fHue = (Math.atan2(dy, dx) * 180 / Math.PI + 90 + 360) % 360;
-    // 2026-06-16 修改註記：配合色相環選擇顏色設定從 12/16 軸改為 6 軸，將每個軸的間距改為 60° (360 / 6)，限制範圍改為左右 ±30°
+    // 2026-06-16 修改註記：配合色相環選擇顏色Set從 12/16 Axes改為 6 Axes，將每個軸的間距改為 60° (360 / 6)，限制範圍改為左右 ±30°
     const base = ((AXIS16.indexOf(selAxis) - AXIS16.indexOf("R")) * 60 + 360) % 360;
     let off = ((fHue - base + 540) % 360) - 180;       // 正規化到 [-180,180]
     off = Math.max(-30, Math.min(30, off));             // 限制在該軸 ±30° 範圍
@@ -1291,7 +1291,7 @@ export default function App() {
     const observer = new ResizeObserver((entries) => {
       for (let entry of entries) {
         const { height } = entry.contentRect;
-        // 內容極限高度(包含外圈節點)設為 298px，使高度能完美填滿。設定下限值為 0.86，在 Panel 變矮時色環大小不變
+        // 內容極限高度(包含外圈節點)設為 298px，使高度能完美填滿。Set下限值為 0.86，在 Panel 變矮時色環大小不變
         const calculatedScale = height / 298;
         setWheelScale(Math.max(0.86, Math.min(1.0, calculatedScale)));
       }
@@ -1640,7 +1640,7 @@ export default function App() {
               }
             }
             
-            // 2026-06-16 修改註記：配合 6 軸 (間距 60°)，將影響半寬度 (falloff) 由 22.5° 修改為 30°
+            // 2026-06-16 修改註記：配合 6 Axes (間距 60°)，將影響半寬度 (falloff) 由 22.5° 修改為 30°
             if (bestAx && bd < 30) {
               const w = 1 - bd / 30; // 與 30° 軸間距對齊 (見 applyMulti 註解)
               let newH = h + bestAx.hueAdj * w;
@@ -1801,7 +1801,7 @@ export default function App() {
         drawHist(Gh, "rgba(70,224,138,0.45)");
         drawHist(Bh, "rgba(90,168,255,0.45)");
         g.font = "14px monospace"; g.fillStyle = "rgba(150,165,175,0.7)";
-        g.fillText("暗", 5, 14); g.fillText("亮", W - 20, 14);
+        g.fillText("Dark", 5, 14); g.fillText("Bright", W - 20, 14);
       }
     }
   }, [st, bypass, colorBars, scope, showScope, imgLoaded, isDragging, paintLayout, activeMenu, isFocused, selAxis, draftHue, draftSat]);
@@ -1838,7 +1838,7 @@ export default function App() {
   const loadStandard = () => { 
     setSt(JSON.parse(JSON.stringify(DEF))); 
     setActiveScene("std"); 
-    flash("已載入 AVer (原廠預設)"); 
+    flash("Loaded AVer (Factory Default)"); 
   };
   
   const saveNewScene = () => {
@@ -1854,13 +1854,13 @@ export default function App() {
     setSaveOpen(false); 
     setScName(""); 
     setScRemark("");
-    flash(`已儲存「${name}」`);
+    flash(`Saved "${name}"`);
   };
   
   const loadScene = (s) => { 
     setSt(JSON.parse(JSON.stringify(s.data))); 
     setActiveScene(s.id); 
-    flash(`已載入「${s.name}」`); 
+    flash(`Loaded "${s.name}"`); 
   };
   
   const updateScene = (s) => { 
@@ -1869,19 +1869,19 @@ export default function App() {
       savedAt: new Date().toLocaleString("zh-TW", { hour12: false }) 
     } : x)); 
     setActiveScene(s.id); 
-    flash(`已更新「${s.name}」`); 
+    flash(`Updated "${s.name}"`); 
   };
   
   const deleteScene = (s) => { 
     setScenes((sc) => sc.filter((x) => x.id !== s.id)); 
     if (activeScene === s.id) setActiveScene(null); 
-    flash(`已刪除「${s.name}」`); 
+    flash(`Deleted "${s.name}"`); 
   };
 
   const saveSceneMeta = () => {
     setScenes((sc) => sc.map((x) => x.id === editingScene ? { ...x, name: edName.trim() || x.name, remark: edRemark.trim() } : x));
     setEditingScene(null);
-    flash("已更新場景資訊");
+    flash("Updated Scene Info");
   };
 
   // ==========================================================================
@@ -1893,7 +1893,7 @@ export default function App() {
         <div id="aver-control-params-matrix" style={{ display: "flex", flexDirection: "column", flex: 1, minHeight: 0 }}>
           <BlockHeader 
             title="Matrix" 
-            sub="調整 RGB 三色的相互關係與整體色相、飽和，會同時影響全畫面的所有顏色"
+            sub="Adjust the mutual relationship of RGB colors, hue, and saturation, affecting the entire image."
           />
           {/* [PM 定案] 固定色相環視覺(對齊 Multi-Matrix)。
               色相環以 height:100% + aspectRatio:1 撐滿垂直空間成正方形,row 底部 paddingBottom 預留間距;
@@ -1905,7 +1905,7 @@ export default function App() {
             
             <div style={{ flex: 1, minWidth: 240, height: "100%", display: "flex", flexDirection: "column", minHeight: 0 }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8, width: "100%", boxSizing: "border-box" }}>
-                <span style={{ fontSize: 14, color: T.text, fontWeight: 600 }}>色彩控制項目</span>
+                <span style={{ fontSize: 14, color: T.text, fontWeight: 600 }}>Color Control Items</span>
                 <div style={{ width: 80, display: "flex" }}>
                   <MiniBtn onClick={() => MATRIX_KEYS.forEach(([k]) => upd(k, 0))}>Default</MiniBtn>
                 </div>
@@ -1938,9 +1938,9 @@ export default function App() {
     if (block === "multi") {
       // ====================================================================
       // Multi-Matrix 區塊 — 提供三種 UX 呈現 (由 multiStyle 切換,供設計比較):
-      //   "wheel" 雷達色環 — 選擇態(16軸環) ↔ 聚焦態(只留選中軸、整環變該色相,專注單軸微調)
-      //   "fader" 推桿台   — 16 軸 × S/H 雙直立推桿(混音台風格,命中區大,適合大幅塑形與總覽)
-      //   "eq"    色卡矩陣 — 2×8 卡片密集網格(數值精確、可一次綜覽全部 16 軸)
+      //   "wheel" Radar Wheel — 選擇態(16軸環) ↔ 聚焦態(只留選中軸、整環變該色相,專注單軸微調)
+      //   "fader" 推桿台   — 16 Axes × S/H 雙直立推桿(混音台風格,命中區大,適合大幅塑形與總覽)
+      //   "eq"    色卡矩陣 — 2×8 卡片密集網格(數值精確、可一次綜覽全部 16 Axes)
       // 三者共用同一份狀態 (st.axes / selAxis),僅呈現方式不同。
       // angUI 為本地等分表 (22.5°),與全域 AXIS_HUE 一致 (環顯示與底層運算對齊)。
       // ====================================================================
@@ -1949,11 +1949,11 @@ export default function App() {
       // [A+C 強化] 是否有任一軸被調整過 → 用來「讓調過的浮出、沒調過的降存在感」(三種樣式共用)
       const anyTouched = AXIS16.some((a) => st.axes[a].hue !== 0 || st.axes[a].sat !== 0);
       const touchedCount = AXIS16.filter((a) => st.axes[a].hue !== 0 || st.axes[a].sat !== 0).length;
-      // 6 軸等分色相環,每軸 60°,R 軸在環頂 (0°)
+      // 6 Axes等分色相環,每軸 60°,R 軸在環頂 (0°)
       const angUI = {};
       AXIS16.forEach((a, i) => { const idxR = AXIS16.indexOf("R"); angUI[a] = ((i - idxR) * 60 + 360) % 360; });
 
-      // 聚焦態:整個環即時反映「草稿」的 Hue/Sat(尚未寫入 st,按確定才套用)
+      // 聚焦態:整個環即時反映「草稿」的 Hue/Sat(尚未寫入 st,按OK才套用)
       const fHueSrc = isFocused ? draftHue : (ax ? ax.hue : 0);
       const fSatSrc = isFocused ? draftSat : (ax ? ax.sat : 0);
       const fHue = selAxis ? ((angUI[selAxis] + (fHueSrc / 99) * 30 + 360) % 360) : 0;
@@ -1972,7 +1972,7 @@ export default function App() {
           ) : (
             <BlockHeader
               title="Multi-Matrix"
-              sub="點擊色環節點選取該色，單獨調整其色相與飽和，不影響其他顏色"
+              sub="Click node to select color, adjust hue and saturation individually without affecting other colors."
             />
           )}
           <div style={{ display: "flex", flexDirection: "column", justifyContent: "flex-start", gap: 10, width: "100%", boxSizing: "border-box", flex: 1, minHeight: 0, overflow: isWheel ? "visible" : "auto", padding: isWheel ? "8px 0 16px" : "10px 0" }}>
@@ -1982,7 +1982,7 @@ export default function App() {
                 onClick={() => { if (!mOff) { setSelAxis(null); if (isFocused) closeFocus(); } }}
                 style={{ display: "flex", gap: 24, alignItems: "stretch", justifyContent: "center", width: "100%", height: "100%", minHeight: 0 }}
               >
-                {/* === 雷達色環:選擇態(6軸) ↔ 聚焦態(單軸) === */}
+                {/* === Radar Wheel:選擇態(6軸) ↔ 聚焦態(單軸) === */}
                 <div id="aver-wheel-layout-shell" style={{ display: "flex", justifyContent: "center", alignItems: "center", flex: "0 0 290px", overflow: "visible", height: "100%" }}>
                   <div id="aver-wheel-main-container" ref={ringRef} 
                     onClick={(e) => { e.stopPropagation(); if (!mOff && !isFocused) setSelAxis(null); }}
@@ -2111,7 +2111,7 @@ export default function App() {
                     const base = angUI[selAxis];
                     const px = (deg, r) => 145 + Math.cos((deg - 90) * Math.PI / 180) * r;
                     const py = (deg, r) => 145 + Math.sin((deg - 90) * Math.PI / 180) * r;
-                    // 2026-06-16 修改註記：配合 6 軸 (間距 60°)，扇形繪製範圍改為 ±30°
+                    // 2026-06-16 修改註記：配合 6 Axes (間距 60°)，扇形繪製範圍改為 ±30°
                     const a0 = base - 30, a1 = base + 30;
                     const rIn = 77, rOut = 145;
                     const segPath = (s0, s1) =>
@@ -2208,7 +2208,7 @@ export default function App() {
                   <div id="aver-wheel-center-controller" style={{ position: "absolute", inset: 68, borderRadius: "50%", background: "radial-gradient(circle at 38% 30%, #181c21, #0e1114)", border: `1px solid ${(isFocused || (multiStyle === "wheel2" && selAxis)) ? `hsl(${fHue} 60% 45%)` : T.line2}`, boxShadow: "inset 0 0 24px rgba(0,0,0,0.6)", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 2, transition: "border-color 0.48s cubic-bezier(0.16, 1, 0.3, 1)", zIndex: 20 }}>
                     {(isFocused || (multiStyle === "wheel2" && selAxis)) ? (
                       <>
-                        <span style={{ fontSize: 15, letterSpacing: 1.5, color: T.faint, fontFamily: fMono }}>{multiStyle === "wheel2" ? "已選擇" : "調整中"}</span>
+                        <span style={{ fontSize: 15, letterSpacing: 1.5, color: T.faint, fontFamily: fMono }}>{multiStyle === "wheel2" ? "Selected" : "Adjusting"}</span>
                         <span style={{ 
                           fontSize: selAxis === "MG" ? 21 : selAxis === "YL" ? 23 : selAxis === "G" ? 25 : 27, 
                           fontWeight: 700, 
@@ -2227,12 +2227,12 @@ export default function App() {
                       </>
                     ) : (
                       <>
-                        <span style={{ fontSize: 16.5, letterSpacing: 2, color: T.faint, fontFamily: fMono }}>選擇色相軸</span>
-                        <span style={{ fontSize: 26, fontWeight: 600, color: T.dim, lineHeight: 1.2, marginTop: 3 }}>6 軸</span>
+                        <span style={{ fontSize: 16.5, letterSpacing: 2, color: T.faint, fontFamily: fMono }}>Select Hue Axis</span>
+                        <span style={{ fontSize: 26, fontWeight: 600, color: T.dim, lineHeight: 1.2, marginTop: 3 }}>6 Axes</span>
                         {anyTouched ? (
-                          <span style={{ fontSize: 14.5, color: T.amber, marginTop: 4, fontFamily: fMono }}>● 已調整 {touchedCount} 軸</span>
+                          <span style={{ fontSize: 14.5, color: T.amber, marginTop: 4, fontFamily: fMono }}>● {touchedCount} Axes Adjusted</span>
                         ) : (
-                          <span style={{ fontSize: 14, color: T.faint, marginTop: 4 }}>點任一節點調整</span>
+                          <span style={{ fontSize: 14, color: T.faint, marginTop: 4 }}>Click any node to adjust</span>
                         )}
                       </>
                     )}
@@ -2244,13 +2244,13 @@ export default function App() {
                   {multiStyle === "wheel2" ? (
                     <div style={{ display: "flex", flexDirection: "column", gap: 0, height: "100%", width: "100%" }}>
                       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8, width: "100%", boxSizing: "border-box" }}>
-                        <span style={{ fontSize: 14, color: T.text, fontWeight: 600 }}>色彩控制項目</span>
+                        <span style={{ fontSize: 14, color: T.text, fontWeight: 600 }}>Color Control Items</span>
                         <div style={{ width: 80, display: "flex" }}>
                           <MiniBtn onClick={() => { if (!mOff) upd("axes", DEF_AXES()); }} disabled={mOff}>Default</MiniBtn>
                         </div>
                       </div>
                       
-                      {/* [2026-06 PM 定案] 6 軸色彩控制改為 2 欄 × 3 列 grid:不捲動,單一畫面即可調整全部 6 色。
+                      {/* [2026-06 PM 定案] 6-Axis Color Control改為 2 欄 × 3 列 grid:不捲動,單一畫面即可調整全部 6 色。
                           gridAutoRows:1fr 讓三列等高填滿可用空間;overflow:hidden 確保不出現 scroll bar。 */}
                       <div style={{ flex: 1, minHeight: 0, overflow: "hidden", display: "grid", gridTemplateColumns: "1fr 1fr", gridAutoRows: "1fr", columnGap: 10, rowGap: 4 }}>
                         {AXIS16.map((axis) => {
@@ -2360,41 +2360,41 @@ export default function App() {
                     /* [聚焦態] 控制面板在環右側(並排) */
                     <div className={focusClosing ? "aver-fade-out" : "aver-pop"} style={{ background: "rgba(0,0,0,0.18)", border: `1px solid ${T.line}`, borderRadius: 10, padding: "14px 16px", boxSizing: "border-box" }}>
                       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 12 }}>
-                        <span style={{ fontSize: 15, color: T.text, fontWeight: 600 }}>調整 {FULL_NAME[selAxis]}</span>
+                        <span style={{ fontSize: 15, color: T.text, fontWeight: 600 }}>Adjust {FULL_NAME[selAxis]}</span>
                         {(draftHue !== ax.hue || draftSat !== ax.sat) && (
-                          <span style={{ fontSize: 11, color: T.amber, fontFamily: fMono }}>● 尚未套用</span>
+                          <span style={{ fontSize: 11, color: T.amber, fontFamily: fMono }}>● Not Applied Yet</span>
                         )}
                       </div>
-                      <Slider k="hue" label="Hue" hint="該區色相旋轉" min={-99} max={99} val={draftHue} onChange={(v) => setDraftHue(v)} onStartDrag={startDrag} onEndDrag={endDrag} disabled={mOff} />
-                      <Slider k="sat" label="Saturation" hint="該區飽和度" min={-99} max={99} val={draftSat} onChange={(v) => setDraftSat(v)} onStartDrag={startDrag} onEndDrag={endDrag} disabled={mOff} />
+                      <Slider k="hue" label="Hue" hint="Hue rotation in this zone" min={-99} max={99} val={draftHue} onChange={(v) => setDraftHue(v)} onStartDrag={startDrag} onEndDrag={endDrag} disabled={mOff} />
+                      <Slider k="sat" label="Saturation" hint="Saturation in this zone" min={-99} max={99} val={draftSat} onChange={(v) => setDraftSat(v)} onStartDrag={startDrag} onEndDrag={endDrag} disabled={mOff} />
                       <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
                         <button onClick={confirmFocus} disabled={mOff}
                           style={{ flex: 1, padding: "9px 0", fontSize: 13.5, fontWeight: 600, cursor: mOff ? "default" : "pointer", borderRadius: 6, border: "none", background: mOff ? T.line : T.blue, color: mOff ? T.faint : "#fff", fontFamily: fUI }}>
-                          確定
+                          OK
                         </button>
                         <button onClick={closeFocus}
                           style={{ flex: 1, padding: "9px 0", fontSize: 13, cursor: "pointer", borderRadius: 6, border: `1px solid ${T.line2}`, background: "transparent", color: T.dim, fontFamily: fUI }}>
-                          取消
+                          Cancel
                         </button>
                       </div>
-                      <Note>畫面與環即時預覽調整後的效果，<span style={{ color: T.amber }}>需按「確定」才儲存變更</span>；「取消」放棄修改。</Note>
+                      <Note>The image and color wheel instantly preview the adjusted effect. <span style={{ color: T.amber }}>Click "OK" to apply changes</span>; "Cancel" to discard.</Note>
                     </div>
                   ) : (
                     <div style={{ display: "flex", flexDirection: "column", flex: 1, height: "100%", minHeight: 0 }}>
                       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6, width: "100%", boxSizing: "border-box" }}>
-                        <span style={{ fontSize: 14, color: T.text, fontWeight: 600 }}>選擇要調整的色相軸</span>
+                        <span style={{ fontSize: 14, color: T.text, fontWeight: 600 }}>Select Hue Axis to Adjust</span>
                         <div style={{ width: 80, display: "flex" }}>
                           <MiniBtn onClick={() => upd("axes", DEF_AXES())} disabled={mOff}>Default</MiniBtn>
                         </div>
                       </div>
                       <div style={{ fontSize: 12.5, color: T.dim, lineHeight: 1.6, marginBottom: 14 }}>
-                        請點擊左側色相環上的節點（如 Red, Yellow 等）或下方已調整的晶片標籤，即可進入該色彩軸進行詳細微調。
+                        Please click on a node on the left color wheel (e.g. Red, Yellow) or an adjusted color tag below to enter detailed tuning for that axis.
                       </div>
 
                       <div style={{ flex: 1, overflowY: "auto", marginBottom: 14, minHeight: 0 }}>
                         {AXIS16.some((a) => st.axes[a].hue || st.axes[a].sat) ? (
                           <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-                            <span style={{ fontSize: 13.5, color: "rgba(255, 255, 255, 0.7)", fontWeight: 600, width: "100%", marginBottom: 4 }}>已調整的軸:</span>
+                            <span style={{ fontSize: 13.5, color: "rgba(255, 255, 255, 0.7)", fontWeight: 600, width: "100%", marginBottom: 4 }}>Adjusted Axes:</span>
                             {AXIS16.filter((a) => st.axes[a].hue || st.axes[a].sat).map((a) => {
                               const FULL_NAME = { R: "Red", YL: "Yellow", G: "Green", CY: "Cyan", B: "Blue", MG: "Magenta" };
                               const dotCol = `hsl(${angUI[a]} 90% 55%)`;
@@ -2445,7 +2445,7 @@ export default function App() {
                                       updAxis(a, "hue", 0);
                                       updAxis(a, "sat", 0);
                                     }}
-                                    title="將此軸歸零"
+                                    title="Reset this axis to zero"
                                     style={{
                                       display: "flex",
                                       alignItems: "center",
@@ -2480,7 +2480,7 @@ export default function App() {
                             })}
                           </div>
                         ) : (
-                          <div style={{ fontSize: 12, color: T.faint }}>尚未調整任何軸。</div>
+                          <div style={{ fontSize: 12, color: T.faint }}>No axes adjusted yet.</div>
                         )}
                       </div>
                       {/* 移至標題右側 */}
@@ -2489,15 +2489,15 @@ export default function App() {
                 </div>
               </div>
             ) : (
-              /* === 色彩量錶盤 (Colour Gauges):弧形量錶 + 中央發光色盤,自適應對齊網格 === */
+              /* === Color Dial盤 (Colour Gauges):弧形量錶 + 中央發光色盤,自適應對齊網格 === */
               <div style={{ width: "100%", boxSizing: "border-box", padding: "6px 8px 8px" }}>
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginBottom: 10 }}>
                   <span style={{ fontSize: 13, color: T.dim }}>
-                    拖曳量錶外圈調整 Gain,下方滑桿調整 Hue;中央色盤即時反映該軸調整後的色彩。
+                    Drag the outer ring of the dial to adjust Gain, and the slider below to adjust Hue; the central swatch reflects the adjusted color in real-time.
                   </span>
                   <button onClick={() => { if (!mOff) upd("axes", DEF_AXES()); }} disabled={mOff}
                     style={{ flexShrink: 0, padding: "7px 16px", fontSize: 13, fontWeight: 600, cursor: mOff ? "not-allowed" : "pointer", borderRadius: 7, border: `1px solid ${T.line2}`, background: T.panel2, color: mOff ? T.faint : T.text, fontFamily: fUI, opacity: mOff ? 0.5 : 1 }}>
-                    全部恢復為 Default
+                    Reset All to Default
                   </button>
                 </div>
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 230px))", justifyContent: "center", gap: 12, alignItems: "stretch", width: "100%", boxSizing: "border-box" }}>
@@ -2607,19 +2607,19 @@ export default function App() {
   const paintMonitor = () => (
     <div style={{ position: "relative", borderRadius: 10, overflow: "hidden", border: `1px solid ${T.line}`, background: "#000", flex: 1, minHeight: 0, width: "100%", boxSizing: "border-box", display: "flex", alignItems: "center", justifyContent: "center" }}>
       <canvas ref={preRef} width={SW} height={SH} style={{ width: "100%", height: "100%", display: "block", objectFit: "contain" }} />
-      <span style={{ position: "absolute", left: 12, top: 10, fontFamily: fMono, fontSize: 14, color: "rgba(255,255,255,.9)", textShadow: "0 1px 2px #000", fontWeight: 600, zIndex: 20 }}>{bypass ? "● BYPASS" : "● LIVE(模擬畫面)"}</span>
+      <span style={{ position: "absolute", left: 12, top: 10, fontFamily: fMono, fontSize: 14, color: "rgba(255,255,255,.9)", textShadow: "0 1px 2px #000", fontWeight: 600, zIndex: 20 }}>{bypass ? "● BYPASS" : "● LIVE (Simulation)"}</span>
       <div style={{ position: "absolute", right: 12, top: 10, display: "flex", gap: 8, zIndex: 20 }}>
         <button onMouseDown={() => setBypass(true)} onMouseUp={() => setBypass(false)} onMouseLeave={() => setBypass(false)} onTouchStart={() => setBypass(true)} onTouchEnd={() => setBypass(false)}
           style={{ padding: "4px 10px", fontSize: 14, cursor: "pointer", borderRadius: 5, border: bypass ? `1px solid ${T.blue}` : "1px solid rgba(255,255,255,0.25)", background: bypass ? "rgba(30,155,240,0.85)" : "rgba(22,24,27,0.65)", color: bypass ? "#fff" : "rgba(255,255,255,0.9)", fontFamily: fUI, backdropFilter: "blur(4px)", transition: "all .15s" }}>
-          {bypass ? "原始畫面" : "按住看原始"}
+          {bypass ? "Original" : "Hold for Original"}
         </button>
       </div>
       <div style={{ position: "absolute", left: 12, bottom: 12, height: 38, boxSizing: "border-box", background: "rgba(22, 24, 27, 0.75)", border: `1px solid ${T.line}`, borderRadius: 8, padding: "0 12px", display: "flex", alignItems: "center", gap: 12, backdropFilter: "blur(4px)", zIndex: 20 }}>
-        <span style={{ fontSize: 14, color: "rgba(255,255,255,0.9)", fontWeight: 600 }}>監看</span>
+        <span style={{ fontSize: 14, color: "rgba(255,255,255,0.9)", fontWeight: 600 }}>Monitor</span>
         <Toggle on={showScope} onChange={setShowScope} />
         {showScope && (
           <div style={{ display: "flex", background: "#101216", border: `1px solid ${T.line}`, borderRadius: 6, padding: 3, gap: 4, alignItems: "center" }}>
-            {[["vector", "向量"], ["wave", "波形"], ["hist", "直方圖"]].map(([id, lb]) => (
+            {[["vector", "Vector"], ["wave", "Waveform"], ["hist", "Histogram"]].map(([id, lb]) => (
               <button key={id} onClick={() => setScope(id)} style={{ padding: "4px 10px", fontSize: 14, cursor: "pointer", borderRadius: 4, border: "none", background: scope === id ? T.blue : "transparent", color: scope === id ? "#fff" : T.dim, fontFamily: fUI }}>{lb}</button>
             ))}
           </div>
@@ -2628,7 +2628,7 @@ export default function App() {
       {showScope && (
         <div style={{ position: "absolute", right: 12, bottom: 12, zIndex: 20, borderRadius: 6, overflow: "hidden", border: `1px solid ${T.line}`, boxShadow: "0 4px 12px rgba(0,0,0,0.5)", background: "rgba(8,12,10,0.95)", display: "flex", flexDirection: "column", alignItems: "center", padding: "4px" }}>
           <canvas ref={scRef} width={scope === "vector" ? 140 : 190} height={140} style={{ display: "block", borderRadius: 4 }} />
-          <div style={{ fontSize: 14, color: T.dim, marginTop: 3, fontFamily: fUI, textAlign: "center" }}>{scope === "vector" ? "向量示波器 (膚色線)" : scope === "wave" ? "波形圖 (0-100%)" : "RGB 直方圖 (暗→亮)"}</div>
+          <div style={{ fontSize: 14, color: T.dim, marginTop: 3, fontFamily: fUI, textAlign: "center" }}>{scope === "vector" ? "Vectorscope (Skin Line)" : scope === "wave" ? "Waveform (0-100%)" : "RGB Histogram (Dark to Bright)"}</div>
         </div>
       )}
     </div>
@@ -2656,26 +2656,26 @@ export default function App() {
   const paintSaveActions = () => (
     <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
       {isDirty && activeScene !== "std" && activeScene != null && (
-        <button onClick={() => { const s = scenes.find((x) => x.id === activeScene); if (s) updateScene(s); }} style={{ padding: "6px 14px", fontSize: 14, fontWeight: 600, cursor: "pointer", borderRadius: 6, border: `1px solid ${T.blueDark}`, background: "rgba(30,155,240,0.12)", color: T.blue, fontFamily: fUI }}>儲存變更</button>
+        <button onClick={() => { const s = scenes.find((x) => x.id === activeScene); if (s) updateScene(s); }} style={{ padding: "6px 14px", fontSize: 14, fontWeight: 600, cursor: "pointer", borderRadius: 6, border: `1px solid ${T.blueDark}`, background: "rgba(30,155,240,0.12)", color: T.blue, fontFamily: fUI }}>Save Changes</button>
       )}
 
-      <button onClick={() => { setSaveOpen((v) => !v); setEditingScene(null); setScName(""); setScRemark(""); }} disabled={!isDirty || scenes.length >= 16} style={{ padding: "6px 14px", fontSize: 14, fontWeight: 600, cursor: (!isDirty || scenes.length >= 16) ? "not-allowed" : "pointer", borderRadius: 6, border: "none", background: (!isDirty || scenes.length >= 16) ? "rgba(255, 255, 255, 0.08)" : T.blue, color: (!isDirty || scenes.length >= 16) ? T.faint : "#fff", fontFamily: fUI, opacity: (!isDirty || scenes.length >= 16) ? 0.45 : 1 }}>另存為新場景</button>
+      <button onClick={() => { setSaveOpen((v) => !v); setEditingScene(null); setScName(""); setScRemark(""); }} disabled={!isDirty || scenes.length >= 16} style={{ padding: "6px 14px", fontSize: 14, fontWeight: 600, cursor: (!isDirty || scenes.length >= 16) ? "not-allowed" : "pointer", borderRadius: 6, border: "none", background: (!isDirty || scenes.length >= 16) ? "rgba(255, 255, 255, 0.08)" : T.blue, color: (!isDirty || scenes.length >= 16) ? T.faint : "#fff", fontFamily: fUI, opacity: (!isDirty || scenes.length >= 16) ? 0.45 : 1 }}>Save as New Scene</button>
     </div>
   );
   const paintSceneState = () => (
     <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-      <span style={{ fontSize: 14, fontWeight: 600, color: T.dim }}>當前套用場景：</span>
+      <span style={{ fontSize: 14, fontWeight: 600, color: T.dim }}>Current Scene: </span>
       <span style={{ fontSize: 14, fontWeight: 700, color: activeScene === "std" ? T.blue : T.text, background: activeScene === "std" ? "rgba(30,155,240,0.1)" : "rgba(255,255,255,0.06)", padding: "4px 10px", borderRadius: 6, border: `1px solid ${activeScene === "std" ? "rgba(30,155,240,0.2)" : T.line}` }}>
-        {activeScene === "std" ? "AVer (原廠預設)" : (scenes.find((x) => x.id === activeScene)?.name || "自訂場景")}
+        {activeScene === "std" ? "AVer (Factory Default)" : (scenes.find((x) => x.id === activeScene)?.name || "Custom Scene")}
       </span>
-      {isDirty && (<span style={{ fontSize: 14, fontWeight: 600, color: T.amber, background: "rgba(245,166,35,0.1)", padding: "3px 8px", borderRadius: 4, border: `1px solid rgba(245,166,35,0.2)` }}>● 已修改未儲存</span>)}
+      {isDirty && (<span style={{ fontSize: 14, fontWeight: 600, color: T.amber, background: "rgba(245,166,35,0.1)", padding: "3px 8px", borderRadius: 4, border: `1px solid rgba(245,166,35,0.2)` }}>● Modified, Unsaved</span>)}
     </div>
   );
-  // 設計樣式切換鈕(雷達色環 / 雷達色環2 / 色彩量錶) - 直式垂直排列版
+  // 設計樣式切換鈕(Radar Wheel / Radar Wheel 2 / Color Dial) - 直式垂直排列版
   const paintStyleToggle = () => {
     return (
       <div style={{ display: "flex", flexDirection: "column", background: "#101216", border: `1px solid ${T.line}`, borderRadius: 8, padding: 3, gap: 4, alignItems: "stretch", width: 92, boxSizing: "border-box" }}>
-        {[["wheel", "雷達色環"], ["wheel2", "雷達色環2"], ["strip", "色彩量錶"]].map(([id, lb]) => (
+        {[["wheel", "Radar Wheel"], ["wheel2", "Radar Wheel 2"], ["strip", "Color Dial"]].map(([id, lb]) => (
           <button key={id}
             onClick={() => { setMultiStyle(id); setIsFocused(false); }}
             style={{ 
@@ -2702,25 +2702,25 @@ export default function App() {
   // ===== Paint/Look Onboarding 三段引導內容 =====
   const ONB_STEPS = [
     {
-      tag: "場景檔案",
-      title: "場景檔案系統",
-      desc: "套用原廠「AVer 預設」作為起點,或將你調好的設定「另存為新場景」。每個場景獨立保存,可隨時覆寫、回復或切換,方便為不同會議室、燈光情境快速套用。",
+      tag: "Scene Files",
+      title: "Scene File System",
+      desc: "Apply the factory 'AVer default' as a starting point, or save your fine-tuned settings as a 'New Scene'. Each scene is stored independently and can be overwritten, reverted, or switched at any time.",
       accent: "#3b82f6",
-      visualNote: "【示意圖待 UI 製作】場景卡片切換:原廠預設卡 + 數張使用者場景卡,呈現「儲存 / 覆寫 / 切換」的概念。",
+      visualNote: "Scene card switching: Factory default card + several user scene cards, representing the concept of 'Save / Overwrite / Switch'.",
     },
     {
-      tag: "色彩調整",
-      title: "左側色彩區塊調色",
-      desc: "Matrix、Multi-Matrix、Knee、Black Level 逐項微調影像色彩與層次。每個區塊都搭配視覺化輔助(色塊 / 色相環、雷達色環、色彩量錶),抽象參數一看就懂在調什麼。",
+      tag: "Color Adjustment",
+      title: "Left Color Block Adjustment",
+      desc: "Fine-tune image color and layers item-by-item: Matrix, Multi-Matrix, Knee, and Black Level. Each block is accompanied by visual aids (color swatches, hue ring, radar color wheel, color dial), making abstract parameters easy to understand.",
       accent: "#22c55e",
-      visualNote: "【示意圖待 UI 製作】左側區塊清單 + 滑桿調色,搭配色塊 / 色相環 / 量錶等視覺化輔助的示意。",
+      visualNote: "Left block list + slider color adjustment, with visual aids like color swatches / hue ring / dial.",
     },
     {
-      tag: "監看與調色",
-      title: "監看示波器與視覺化輔助",
-      desc: "右側示波器(向量 / 波形 / 直方圖)即時監看色彩與曝光分佈,輔助精準調色。各色彩區塊也提供視覺化輔助(色塊 / 色相環、雷達色環、色彩量錶),搭配示波器讓調色更直覺、可驗證。",
+      tag: "Monitoring & Tuning",
+      title: "Monitoring Scopes & Visual Aids",
+      desc: "The scopes on the right (Vectorscope, Waveform, Histogram) monitor color and exposure distribution in real-time. Each color block also provides visual aids (swatches, hue ring, radar wheel, color dial), making color tuning intuitive and verifiable.",
       accent: "#f59e0b",
-      visualNote: "【示意圖待 UI 製作】示波器(向量 / 波形 / 直方圖)+ 色彩區塊視覺化輔助(色塊 / 色相環 / 量錶)的示意。",
+      visualNote: "Scopes (Vectorscope / Waveform / Histogram) + color block visual aids (swatches / hue ring / dial)."
     },
   ];
   const onboardingModal = () => {
@@ -2756,12 +2756,12 @@ export default function App() {
           </div>
           {/* 底部按鈕 */}
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 22px 20px" }}>
-            <button onClick={close} style={{ background: "none", border: "none", color: T.faint, fontSize: 13, cursor: "pointer", fontFamily: fUI }}>跳過</button>
+            <button onClick={close} style={{ background: "none", border: "none", color: T.faint, fontSize: 13, cursor: "pointer", fontFamily: fUI }}>Skip</button>
             <div style={{ display: "flex", gap: 10 }}>
               {onbStep > 0 && (
-                <button onClick={() => goStep(onbStep - 1)} style={{ padding: "9px 18px", fontSize: 13.5, fontWeight: 600, cursor: "pointer", borderRadius: 8, border: `1px solid ${T.line2}`, background: "transparent", color: T.text, fontFamily: fUI }}>上一步</button>
+                <button onClick={() => goStep(onbStep - 1)} style={{ padding: "9px 18px", fontSize: 13.5, fontWeight: 600, cursor: "pointer", borderRadius: 8, border: `1px solid ${T.line2}`, background: "transparent", color: T.text, fontFamily: fUI }}>Previous</button>
               )}
-              <button onClick={() => { if (last) close(); else goStep(onbStep + 1); }} style={{ padding: "9px 22px", fontSize: 13.5, fontWeight: 700, cursor: "pointer", borderRadius: 8, border: "none", background: s.accent, color: "#fff", fontFamily: fUI, boxShadow: `0 4px 14px ${s.accent}55`, transition: "background .35s, box-shadow .35s" }}>{last ? "開始使用" : "下一步"}</button>
+              <button onClick={() => { if (last) close(); else goStep(onbStep + 1); }} style={{ padding: "9px 22px", fontSize: 13.5, fontWeight: 700, cursor: "pointer", borderRadius: 8, border: "none", background: s.accent, color: "#fff", fontFamily: fUI, boxShadow: `0 4px 14px ${s.accent}55`, transition: "background .35s, box-shadow .35s" }}>{last ? "Get Started" : "Next"}</button>
             </div>
           </div>
         </div>
@@ -2769,7 +2769,7 @@ export default function App() {
     );
   };
   const onbInfoBtn = () => (
-    <button onClick={() => { setOnbStep(0); setOnbClosing(false); setShowOnboarding(true); }} title="開啟導覽"
+    <button onClick={() => { setOnbStep(0); setOnbClosing(false); setShowOnboarding(true); }} title="Start Onboarding Tour"
       style={{ pointerEvents: "auto", width: 34, height: 34, borderRadius: "50%", border: `1px solid ${T.line2}`, background: "rgba(22,24,27,0.92)", color: T.dim, fontSize: 16, fontWeight: 700, fontFamily: "Georgia, serif", fontStyle: "italic", cursor: "pointer", boxShadow: "0 4px 14px rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center" }}>
       i
     </button>
@@ -2778,7 +2778,7 @@ export default function App() {
   // Matrix 視覺化切換鈕(色塊 / 色相環)
   const matrixVizToggle = () => (
     <div style={{ display: "flex", flexDirection: "column", gap: 0, background: "#101216", border: `1px solid ${T.line}`, borderRadius: 8, padding: 3, userSelect: "none", width: 92, boxSizing: "border-box" }}>
-      {[["swatch", "色塊"], ["ring", "色相環"]].map(([id, lb]) => (
+      {[["swatch", "Swatch"], ["ring", "Hue Ring"]].map(([id, lb]) => (
         <button key={id} onClick={() => setMatrixViz(id)}
           style={{ padding: "8px 0", fontSize: 12.5, fontWeight: 600, cursor: "pointer", borderRadius: 6, border: "none", background: matrixViz === id ? T.blue : "transparent", color: matrixViz === id ? "#fff" : T.dim, fontFamily: fUI, transition: "all .2s", width: "100%", textAlign: "center" }}>
           {lb}
@@ -2804,7 +2804,7 @@ export default function App() {
           transition: "all 0.35s cubic-bezier(0.25, 1, 0.5, 1)",
           zIndex: 1
         }} />
-        {[["classic", "經典版面"], ["cinema", "劇院版面"]].map(([id, lb]) => {
+        {[["classic", "Classic Layout"], ["cinema", "Cinema Layout"]].map(([id, lb]) => {
           const active = paintLayout === id;
           return (
             <button key={id} onClick={() => setPaintLayout(id)} style={{ 
@@ -3019,7 +3019,7 @@ export default function App() {
           0%   { box-shadow: 0 0 0 0 rgba(255,255,255,.35); }
           100% { box-shadow: 0 0 40px 6px rgba(255,255,255,0); }
         }
-        /* === 色彩量錶:進場 / hover / 拖曳動效 === */
+        /* === Color Dial:進場 / hover / 拖曳動效 === */
         @keyframes averGaugeIn {
           from { opacity: 0; transform: translateY(14px) scale(.94); }
           to   { opacity: 1; transform: translateY(0) scale(1); }
@@ -3107,7 +3107,7 @@ export default function App() {
 
           {paintLayout === "classic" ? (
           <div className="aver-classic-layout-entrance" style={{ display: "flex", flexDirection: "column", gap: 10, width: "100%", height: "100%", minHeight: 0 }}>
-          {/* 1. LIVE 預覽與場景檔主控制台 */}
+          {/* 1. LIVE 預覽與Scenes主控制台 */}
           {/* 2026-06-16 修改註記：配合各分頁面板高度一致且防止出現滾動條，預覽區 flex 比例微調為 1.15 */}
           <div id="aver-preview-preset-panel" style={{ background: T.panel, border: `1px solid ${T.line}`, borderRadius: 10, padding: "14px 20px", display: "flex", flexDirection: "column", gap: 12, width: "100%", boxSizing: "border-box", flex: "1.2 1 0", minHeight: 0 }}>
             
@@ -3120,10 +3120,10 @@ export default function App() {
                   {/* 主要畫面 Canvas — 已修正為 React 物理屬性防抖動架構 */}
                   <canvas ref={preRef} width={SW} height={SH} style={{ width: "100%", height: "100%", display: "block", objectFit: "contain" }} />
                   <span style={{ position: "absolute", left: 12, top: 10, fontFamily: fMono, fontSize: 14, color: "rgba(255,255,255,.9)", textShadow: "0 1px 2px #000", fontWeight: 600, zIndex: 20 }}>
-                    {bypass ? "● BYPASS" : "● LIVE(模擬畫面)"}
+                    {bypass ? "● BYPASS" : "● LIVE (Simulation)"}
                   </span>
                   
-                  {/* 按住看原始按鈕 */}
+                  {/* Hold for Original按鈕 */}
                   <div style={{ position: "absolute", right: 12, top: 10, display: "flex", gap: 8, zIndex: 20 }}>
                     <button 
                       onMouseDown={() => setBypass(true)} 
@@ -3139,7 +3139,7 @@ export default function App() {
                         backdropFilter: "blur(4px)", transition: "all .15s"
                       }}
                     >
-                      {bypass ? "原始畫面" : "按住看原始"}
+                      {bypass ? "Original" : "Hold for Original"}
                     </button>
                   </div>
 
@@ -3149,11 +3149,11 @@ export default function App() {
                     background: "rgba(22, 24, 27, 0.75)", border: `1px solid ${T.line}`, borderRadius: 8,
                     padding: "0 12px", display: "flex", alignItems: "center", gap: 12, backdropFilter: "blur(4px)", zIndex: 20
                   }}>
-                    <span style={{ fontSize: 14, color: "rgba(255,255,255,0.9)", fontWeight: 600 }}>監看</span>
+                    <span style={{ fontSize: 14, color: "rgba(255,255,255,0.9)", fontWeight: 600 }}>Monitor</span>
                     <Toggle on={showScope} onChange={setShowScope} />
                     {showScope && (
                       <div style={{ display: "flex", background: "#101216", border: `1px solid ${T.line}`, borderRadius: 6, padding: 3, gap: 4, alignItems: "center" }}>
-                        {[["vector", "向量"], ["wave", "波形"], ["hist", "直方圖"]].map(([id, lb]) => (
+                        {[["vector", "Vector"], ["wave", "Waveform"], ["hist", "Histogram"]].map(([id, lb]) => (
                           <button 
                             key={id} 
                             onClick={() => setScope(id)} 
@@ -3179,25 +3179,25 @@ export default function App() {
                     }}>
                       <canvas ref={scRef} width={scope === "vector" ? 140 : 190} height={140} style={{ display: "block", borderRadius: 4 }} />
                       <div style={{ fontSize: 14, color: T.dim, marginTop: 3, fontFamily: fUI, textAlign: "center" }}>
-                        {scope === "vector" ? "向量示波器 (膚色線)" : scope === "wave" ? "波形圖 (0-100%)" : "RGB 直方圖 (暗→亮)"}
+                        {scope === "vector" ? "Vectorscope (Skin Line)" : scope === "wave" ? "Waveform (0-100%)" : "RGB Histogram (Dark to Bright)"}
                       </div>
                     </div>
                   )}
                 </div>
               </div>
 
-              {/* 右半部:場景檔取用面板 — [設計決策] 純取用層 (載入/編輯/刪除)。
+              {/* 右半部:Scenes取用面板 — [設計決策] 純取用層 (載入/編輯/Delete)。
                   「儲存/另存」動作不在此,而在調整區尾端,符合「調完各區塊→在終點存檔」的工作流。
                   Standard 為原廠卡(不可刪/不佔額度);使用者場景含名稱/備註/縮圖,上限 16。 */}
               <div id="aver-preset-save-block" style={{ width: 320, flexShrink: 0, display: "flex", flexDirection: "column", minHeight: 0, alignSelf: "stretch", background: "rgba(0,0,0,0.18)", border: `1px solid ${T.line}`, borderRadius: 8, padding: "14px 10px", boxSizing: "border-box" }}>
-                {/* 2026-06 場景檔標頭:標題 + 計數 +（移入)當前套用場景 / 已修改未儲存狀態 */}
+                {/* 2026-06 Scenes標頭:標題 + 計數 +（移入)當前套用場景 / Modified, Unsaved狀態 */}
                 <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 10, flexShrink: 0 }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                    <span style={{ fontSize: 15, fontWeight: 600, color: T.text }}>場景檔</span>
+                    <span style={{ fontSize: 15, fontWeight: 600, color: T.text }}>Scenes</span>
                     <span style={{ fontSize: 14, color: scenes.length >= 16 ? T.amber : T.faint, fontFamily: fMono }}>{scenes.length}/16</span>
                   </div>
                   <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "nowrap" }}>
-                    <span style={{ fontSize: 13, fontWeight: 600, color: T.dim, flexShrink: 0 }}>當前套用：</span>
+                    <span style={{ fontSize: 13, fontWeight: 600, color: T.dim, flexShrink: 0 }}>Current Scene: </span>
                     <span style={{
                       fontSize: 13,
                       fontWeight: 700,
@@ -3211,11 +3211,11 @@ export default function App() {
                       borderRadius: 6,
                       border: `1px solid ${activeScene === "std" ? "rgba(30,155,240,0.2)" : T.line}`
                     }}>
-                      {activeScene === "std" ? "AVer (原廠預設)" : (scenes.find((x) => x.id === activeScene)?.name || "自訂場景")}
+                      {activeScene === "std" ? "AVer (Factory Default)" : (scenes.find((x) => x.id === activeScene)?.name || "Custom Scene")}
                     </span>
-                    {/* [2026-06] 同排放不下,故「已修改未儲存」改用 icon 表示(與卡片上的 dirty 黃標一致),hover 顯示完整文字 */}
+                    {/* [2026-06] 同排放不下,故「Modified, Unsaved」改用 icon 表示(與卡片上的 dirty 黃標一致),hover 顯示完整文字 */}
                     {isDirty && (
-                      <span className="aver-fade" title="已修改未儲存" style={{
+                      <span className="aver-fade" title="Modified, Unsaved" style={{
                         flexShrink: 0,
                         width: 18,
                         height: 18,
@@ -3256,7 +3256,7 @@ export default function App() {
                   ))}
                   {scenes.length === 0 && (
                     <div style={{ gridColumn: "1 / -1", border: `1.5px dashed ${T.line2}`, borderRadius: 8, padding: "14px 10px", textAlign: "center", color: T.faint, fontSize: 14, lineHeight: 1.6 }}>
-                      尚無自訂場景。<br />於下方控制台調整參數後，在本面板底部另存。
+                      No custom scenes yet.<br />Adjust parameters in the console below, and save at the bottom of this panel.
                     </div>
                   )}
                 </div>
@@ -3268,7 +3268,7 @@ export default function App() {
                       onClick={() => { const s = scenes.find((x) => x.id === activeScene); if (s) updateScene(s); }}
                       style={{ flex: 1, padding: "8px 14px", fontSize: 14, fontWeight: 600, cursor: "pointer", borderRadius: 6, border: `1px solid ${T.blueDark}`, background: "rgba(30,155,240,0.12)", color: T.blue, fontFamily: fUI, transition: "all .15s" }}
                     >
-                      儲存變更
+                      Save Changes
                     </button>
                   )}
                   <button
@@ -3276,7 +3276,7 @@ export default function App() {
                     disabled={!isDirty || scenes.length >= 16}
                     style={{ flex: 1, padding: "8px 14px", fontSize: 14, fontWeight: 600, cursor: (!isDirty || scenes.length >= 16) ? "not-allowed" : "pointer", borderRadius: 6, border: "none", background: (!isDirty || scenes.length >= 16) ? "rgba(255, 255, 255, 0.08)" : T.blue, color: (!isDirty || scenes.length >= 16) ? T.faint : "#fff", fontFamily: fUI, opacity: (!isDirty || scenes.length >= 16) ? 0.45 : 1, transition: "all 0.28s cubic-bezier(0.16, 1, 0.3, 1)" }}
                   >
-                    另存為新場景
+                    Save as New Scene
                   </button>
                 </div>
                 </div>
@@ -3355,7 +3355,7 @@ export default function App() {
           </div>
           </div>
           ) : (
-          /* ===== 劇院版面 (Cinema):左 Hero 預覽 + 右控制塢 + 底部場景條 ===== */
+          /* ===== Cinema Layout (Cinema):左 Hero 預覽 + 右控制塢 + 底部場景條 ===== */
           <div className="aver-cinema-layout-entrance" style={{ display: "flex", flexDirection: "column", gap: 10, width: "100%", height: "100%", minHeight: 0 }}>
             <div style={{ display: "flex", gap: 10, flex: 1, minHeight: 0, width: "100%" }}>
               {/* 左:Hero 預覽 */}
@@ -3371,7 +3371,7 @@ export default function App() {
                 </div>
                 {/* 區塊導覽(橫向 pills) */}
                 <div style={{ padding: "12px 14px 10px", borderBottom: `1px solid ${T.line}`, flexShrink: 0, display: "flex", flexDirection: "column", gap: 8 }}>
-                  <span style={{ fontSize: 11, letterSpacing: 1, color: T.faint, fontWeight: 600, textTransform: "uppercase" }}>調整區塊</span>
+                  <span style={{ fontSize: 11, letterSpacing: 1, color: T.faint, fontWeight: 600, textTransform: "uppercase" }}>Tuning Sections</span>
                   {paintBlockNav(true)}
                 </div>
                 {/* 控制項 */}
@@ -3383,7 +3383,7 @@ export default function App() {
             {/* 底部:場景條(橫向) */}
             <div style={{ flexShrink: 0, background: T.panel, border: `1px solid ${T.line}`, borderRadius: 10, padding: "10px 14px", display: "flex", alignItems: "stretch", gap: 14, boxSizing: "border-box" }}>
               <div style={{ display: "flex", flexDirection: "column", justifyContent: "center", gap: 2, flexShrink: 0, paddingRight: 14, borderRight: `1px solid ${T.line}` }}>
-                <span style={{ fontSize: 14, fontWeight: 600, color: T.text }}>場景檔</span>
+                <span style={{ fontSize: 14, fontWeight: 600, color: T.text }}>Scenes</span>
                 <span style={{ fontSize: 13, color: scenes.length >= 16 ? T.amber : T.faint, fontFamily: fMono }}>{scenes.length}/16</span>
               </div>
               <div style={{ display: "grid", gridAutoFlow: "column", gridAutoColumns: "150px", gap: 8, overflowX: "auto", overflowY: "hidden", flex: 1, paddingBottom: 4, alignItems: "start" }}>
@@ -3406,7 +3406,7 @@ export default function App() {
                     {/* 內層 16:9 預覽區：高度 100% 填滿，寬度依 16:9 比例自適應，於左右留下黑邊 */}
                     <div style={{ position: "relative", height: "100%", width: "auto", aspectRatio: "16 / 9", overflow: "hidden" }}>
                       <div style={{ position: "absolute", inset: 0, backgroundImage: "url(meeting_room.png)", backgroundSize: "cover", backgroundPosition: "center" }} />
-                      <span style={{ position: "absolute", left: 12, top: 10, fontFamily: fMono, fontSize: 14, color: "rgba(255,255,255,.9)", textShadow: "0 1px 2px #000", fontWeight: 600, zIndex: 10 }}>● LIVE(模擬畫面)</span>
+                      <span style={{ position: "absolute", left: 12, top: 10, fontFamily: fMono, fontSize: 14, color: "rgba(255,255,255,.9)", textShadow: "0 1px 2px #000", fontWeight: 600, zIndex: 10 }}>● LIVE (Simulation)</span>
                     </div>
                   </div>
 
@@ -3503,14 +3503,14 @@ export default function App() {
                     ) : (
                       /* ===== Preset(預設位置)===== */
                       <div style={{ padding: "12px 16px", flex: 1, minHeight: 0, overflow: "hidden", boxSizing: "border-box" }}>
-                        <div style={{ fontSize: 13, color: T.dim, marginBottom: 12 }}>點選預設位點呼叫;長按或「設定」可將目前 PTZ/Focus 狀態存入該位點。</div>
+                        <div style={{ fontSize: 13, color: T.dim, marginBottom: 12 }}>Click preset to call; long press or click "Set" to save current PTZ/Focus status to the preset.</div>
                         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 10 }}>
                           {Array.from({ length: 9 }, (_, i) => i + 1).map((n) => (
                             <div key={n} style={{ ...sec, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
                               <span style={{ fontSize: 14, fontWeight: 700, color: T.text, fontFamily: fMono }}>Preset {n}</span>
                               <div style={{ display: "flex", gap: 6 }}>
-                                <button id={`aver-live-btn-preset-call-${n}`} style={{ padding: "5px 12px", fontSize: 12, cursor: "pointer", borderRadius: 5, border: "none", background: T.blue, color: "#fff", fontFamily: fUI }}>呼叫</button>
-                                <button id={`aver-live-btn-preset-set-${n}`} style={{ padding: "5px 12px", fontSize: 12, cursor: "pointer", borderRadius: 5, border: `1px solid ${T.line2}`, background: T.panel2, color: T.dim, fontFamily: fUI }}>設定</button>
+                                <button id={`aver-live-btn-preset-call-${n}`} style={{ padding: "5px 12px", fontSize: 12, cursor: "pointer", borderRadius: 5, border: "none", background: T.blue, color: "#fff", fontFamily: fUI }}>Call</button>
+                                <button id={`aver-live-btn-preset-set-${n}`} style={{ padding: "5px 12px", fontSize: 12, cursor: "pointer", borderRadius: 5, border: `1px solid ${T.line2}`, background: T.panel2, color: T.dim, fontFamily: fUI }}>Set</button>
                               </div>
                             </div>
                           ))}
@@ -3550,7 +3550,7 @@ export default function App() {
                           transition: "filter .2s ease"
                         }}
                       />
-                      <span style={{ position: "absolute", left: 12, top: 10, fontFamily: fMono, fontSize: 13, color: "rgba(255,255,255,.9)", textShadow: "0 1px 2px #000", fontWeight: 600, zIndex: 10 }}>● LIVE(模擬畫面)</span>
+                      <span style={{ position: "absolute", left: 12, top: 10, fontFamily: fMono, fontSize: 13, color: "rgba(255,255,255,.9)", textShadow: "0 1px 2px #000", fontWeight: 600, zIndex: 10 }}>● LIVE (Simulation)</span>
                       <span style={{ position: "absolute", right: 12, top: 10, fontFamily: fMono, fontSize: 12, color: "rgba(255,255,255,.65)", textShadow: "0 1px 2px #000", zIndex: 10 }}>{EXP_MODES.find(([id]) => id === cam.expMode)[1]}</span>
                     </div>
                   </div>
@@ -3966,7 +3966,7 @@ export default function App() {
           </div>
         )}
 
-        {/* 另存新場景 Modal 彈出視窗 */}
+        {/* Save as New Scene Modal 彈出視窗 */}
         {saveOpen && (
           <div 
             style={{
@@ -3995,7 +3995,7 @@ export default function App() {
               onClick={(e) => e.stopPropagation()}
             >
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
-                <span style={{ fontSize: 18, fontWeight: 600, color: T.text }}>另存新場景</span>
+                <span style={{ fontSize: 18, fontWeight: 600, color: T.text }}>Save as New Scene</span>
                 <button 
                   onClick={() => setSaveOpen(false)} 
                   style={{ background: "none", border: "none", cursor: "pointer", color: T.dim, fontSize: 16, padding: 0 }}
@@ -4006,12 +4006,12 @@ export default function App() {
 
               <div style={{ display: "flex", flexDirection: "column", gap: 12, marginBottom: 20 }}>
                 <div>
-                  <div style={{ fontSize: 14, color: T.dim, marginBottom: 6 }}>場景名稱</div>
+                  <div style={{ fontSize: 14, color: T.dim, marginBottom: 6 }}>Scene Name</div>
                   <input 
                     autoFocus 
                     value={scName} 
                     onChange={(e) => setScName(e.target.value)} 
-                    placeholder="例如: 主舞台 / 直播間" 
+                    placeholder="e.g. Main Stage / Studio" 
                     maxLength={24}
                     style={{ 
                       width: "100%",
@@ -4029,11 +4029,11 @@ export default function App() {
                 </div>
                 
                 <div>
-                  <div style={{ fontSize: 14, color: T.dim, marginBottom: 6 }}>備註資訊</div>
+                  <div style={{ fontSize: 14, color: T.dim, marginBottom: 6 }}>Note</div>
                   <input 
                     value={scRemark} 
                     onChange={(e) => setScRemark(e.target.value)} 
-                    placeholder="描述此場景的用途 (選填)" 
+                    placeholder="Describe this scene (Optional)" 
                     maxLength={48}
                     style={{ 
                       width: "100%",
@@ -4052,7 +4052,7 @@ export default function App() {
 
                 <div style={{ display: "flex", alignItems: "center", gap: 6, background: "rgba(30,155,240,0.05)", padding: "8px 12px", borderRadius: 6, border: `1px solid rgba(30,155,240,0.15)` }}>
                   <span style={{ color: T.blue, fontSize: 14 }}>ℹ</span>
-                  <span style={{ fontSize: 14, color: T.dim }}>儲存時會自動擷取當前 Live View 畫面做為預覽縮圖。</span>
+                  <span style={{ fontSize: 14, color: T.dim }}>Saving will automatically capture the current Live View image as a preview thumbnail.</span>
                 </div>
               </div>
 
@@ -4070,7 +4070,7 @@ export default function App() {
                     fontFamily: fUI 
                   }}
                 >
-                  取消
+                  Cancel
                 </button>
                 <button 
                   onClick={saveNewScene} 
@@ -4086,14 +4086,14 @@ export default function App() {
                     fontFamily: fUI 
                   }}
                 >
-                  確認儲存
+                  Save
                 </button>
               </div>
             </div>
           </div>
         )}
 
-        {/* 編輯場景資訊 Modal 彈出視窗 */}
+        {/* Edit Scene Info Modal 彈出視窗 */}
         {editingScene != null && (() => {
           const es = scenes.find((x) => x.id === editingScene);
           if (!es) return null;
@@ -4125,7 +4125,7 @@ export default function App() {
                 onClick={(e) => e.stopPropagation()}
               >
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
-                  <span style={{ fontSize: 18, fontWeight: 600, color: T.text }}>編輯場景資訊</span>
+                  <span style={{ fontSize: 18, fontWeight: 600, color: T.text }}>Edit Scene Info</span>
                   <button 
                     onClick={() => setEditingScene(null)} 
                     style={{ background: "none", border: "none", cursor: "pointer", color: T.dim, fontSize: 16, padding: 0 }}
@@ -4136,12 +4136,12 @@ export default function App() {
 
                 <div style={{ display: "flex", flexDirection: "column", gap: 12, marginBottom: 20 }}>
                   <div>
-                    <div style={{ fontSize: 14, color: T.dim, marginBottom: 6 }}>場景名稱</div>
+                    <div style={{ fontSize: 14, color: T.dim, marginBottom: 6 }}>Scene Name</div>
                     <input 
                       autoFocus 
                       value={edName} 
                       onChange={(e) => setEdName(e.target.value)} 
-                      placeholder="場景名稱" 
+                      placeholder="Scene Name" 
                       maxLength={24}
                       style={{ 
                         width: "100%",
@@ -4159,11 +4159,11 @@ export default function App() {
                   </div>
                   
                   <div>
-                    <div style={{ fontSize: 14, color: T.dim, marginBottom: 6 }}>備註資訊</div>
+                    <div style={{ fontSize: 14, color: T.dim, marginBottom: 6 }}>Note</div>
                     <input 
                       value={edRemark} 
                       onChange={(e) => setEdRemark(e.target.value)} 
-                      placeholder="場景描述" 
+                      placeholder="Scene Description" 
                       maxLength={48}
                       style={{ 
                         width: "100%",
@@ -4181,11 +4181,11 @@ export default function App() {
                   </div>
 
                   <div>
-                    <div style={{ fontSize: 14, color: T.dim, marginBottom: 6 }}>參數數值摘要</div>
+                    <div style={{ fontSize: 14, color: T.dim, marginBottom: 6 }}>Parameter Summary</div>
                     <div style={{ fontFamily: fMono, fontSize: 14, color: T.dim, lineHeight: 1.7, padding: "10px 12px", background: "#101216", borderRadius: 8, border: `1px solid ${T.line}` }}>
                       {summarize(es.data)}
                       <div style={{ color: T.faint, marginTop: 6, borderTop: `1px solid ${T.line2}`, paddingTop: 6 }}>
-                        儲存於 {es.savedAt} · 出處: 使用者自訂
+                        Saved at {es.savedAt} · Source: User Custom
                       </div>
                     </div>
                   </div>
@@ -4205,7 +4205,7 @@ export default function App() {
                       fontFamily: fUI 
                     }}
                   >
-                    取消
+                    Cancel
                   </button>
                   <button 
                     onClick={saveSceneMeta} 
@@ -4221,7 +4221,7 @@ export default function App() {
                       fontFamily: fUI 
                     }}
                   >
-                    儲存變更
+                    Save Changes
                   </button>
                 </div>
               </div>
@@ -4229,7 +4229,7 @@ export default function App() {
           );
         })()}
 
-        {/* 確認刪除場景 Modal 彈出視窗 */}
+        {/* Delete Scene Modal 彈出視窗 */}
         {deletingScene != null && (
           <div 
             style={{
@@ -4258,7 +4258,7 @@ export default function App() {
               onClick={(e) => e.stopPropagation()}
             >
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
-                <span style={{ fontSize: 18, fontWeight: 600, color: T.text }}>確認刪除場景</span>
+                <span style={{ fontSize: 18, fontWeight: 600, color: T.text }}>Delete Scene</span>
                 <button 
                   onClick={() => setDeletingScene(null)} 
                   style={{ background: "none", border: "none", cursor: "pointer", color: T.dim, fontSize: 16, padding: 0 }}
@@ -4268,8 +4268,8 @@ export default function App() {
               </div>
 
               <div style={{ fontSize: 14, color: T.dim, marginBottom: 24, lineHeight: 1.6 }}>
-                確定要刪除自訂場景「<span style={{ color: "#fff", fontWeight: 600 }}>{deletingScene.name}</span>」嗎？<br />
-                此操作將會永久移除該場景存檔，且無法復原。
+                Are you sure you want to delete the custom scene「<span style={{ color: "#fff", fontWeight: 600 }}>{deletingScene.name}</span>」"?<br />
+                This action will permanently remove the saved scene and cannot be undone.
               </div>
 
               <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
@@ -4286,7 +4286,7 @@ export default function App() {
                     fontFamily: fUI 
                   }}
                 >
-                  取消
+                  Cancel
                 </button>
                 <button 
                   onClick={() => { deleteScene(deletingScene); setDeletingScene(null); }} 
@@ -4302,7 +4302,7 @@ export default function App() {
                     fontFamily: fUI 
                   }}
                 >
-                  確認刪除
+                  Delete
                 </button>
               </div>
             </div>
@@ -4324,7 +4324,7 @@ export default function App() {
             alignItems: "flex-end",
             pointerEvents: "none"
           }}>
-            {/* [PM 定案] Matrix 採「色相環」、Multi-Matrix 採「雷達色環2」、版面採「經典版面」,
+            {/* [PM 定案] Matrix 採「色相環」、Multi-Matrix 採「Radar Wheel 2」、版面採「Classic Layout」,
                 對應的設計切換鈕(matrixVizToggle / paintStyleToggle / paintLayoutToggle)均已移除。 */}
             {/* [2026-06 暫時移除 onboarding 流程] 導覽「i」按鈕已移除;需恢復時還原 {onbInfoBtn()}。 */}
           </div>
