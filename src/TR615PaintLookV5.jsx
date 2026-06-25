@@ -980,34 +980,39 @@ const STD_FIXED_THUMB =
     "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 160 90'>" +
       "<defs>" +
         "<linearGradient id='g' x1='0' y1='0' x2='0' y2='1'>" +
-          "<stop offset='0' stop-color='#1b1e24'/><stop offset='1' stop-color='#0a0c0e'/>" +
+          "<stop offset='0' stop-color='#1a2238'/><stop offset='1' stop-color='#0f1322'/>" +
+        "</linearGradient>" +
+        "<linearGradient id='screen' x1='0' y1='0' x2='1' y2='1'>" +
+          "<stop offset='0' stop-color='#1e3c72'/><stop offset='1' stop-color='#2a5298'/>" +
         "</linearGradient>" +
       "</defs>" +
-      // 背景
+      // 背景 (暗藍色漸層)
       "<rect width='160' height='90' fill='url(#g)'/>" +
-      // 遠處牆壁上的電視顯示器
-      "<rect x='48' y='14' width='64' height='34' rx='2' fill='#0e1013' stroke='#22272e' stroke-width='1.2'/>" +
-      "<rect x='52' y='17' width='56' height='28' rx='1' fill='#14171c'/>" +
-      "<line x1='62' y1='31' x2='98' y2='31' stroke='#262c35' stroke-width='1' stroke-dasharray='3,2'/>" +
-      // 牆面裝飾邊線
-      "<line x1='15' y1='0' x2='15' y2='90' stroke='#15181d' stroke-width='1'/>" +
-      "<line x1='145' y1='0' x2='145' y2='90' stroke='#15181d' stroke-width='1'/>" +
-      // 中間三張遠處會議椅背
-      "<rect x='61' y='46' width='10' height='12' rx='2' fill='#111418' stroke='#1d2127' stroke-width='0.8'/>" +
-      "<rect x='75' y='46' width='10' height='12' rx='2' fill='#111418' stroke='#1d2127' stroke-width='0.8'/>" +
-      "<rect x='89' y='46' width='10' height='12' rx='2' fill='#111418' stroke='#1d2127' stroke-width='0.8'/>" +
-      // 會議桌
-      "<polygon points='16,90 144,90 112,54 48,54' fill='#1b1f25' stroke='#29303a' stroke-width='0.8'/>" +
-      // 近處兩張會議椅背 (左與右)
-      "<rect x='22' y='64' width='14' height='26' rx='3' fill='#13171d' stroke='#222831' stroke-width='0.8'/>" +
-      "<rect x='124' y='64' width='14' height='26' rx='3' fill='#13171d' stroke='#222831' stroke-width='0.8'/>" +
-      // 桌子中央的小麥克風圓盤
-      "<circle cx='80' cy='62' r='3' fill='#262c36'/>" +
-      "<circle cx='80' cy='62' r='1.2' fill='#171a21'/>" +
-      "<circle cx='66' cy='68' r='1.8' fill='#20252e'/>" +
-      "<circle cx='94' cy='68' r='1.8' fill='#20252e'/>" +
+      // 牆面木質裝飾邊板 (暖褐色)
+      "<rect x='0' y='0' width='12' height='90' fill='#2b2118'/>" +
+      "<rect x='148' y='0' width='12' height='90' fill='#2b2118'/>" +
+      // 遠處牆壁上的電視顯示器 (帶有亮藍色簡報畫面)
+      "<rect x='48' y='14' width='64' height='34' rx='2' fill='#1b1e22' stroke='#2c323b' stroke-width='1.2'/>" +
+      "<rect x='52' y='17' width='56' height='28' rx='1' fill='url(#screen)'/>" +
+      "<path d='M72,28 L88,28 L80,36 Z' fill='rgba(255,255,255,0.65)'/>" +
+      "<circle cx='60' cy='25' r='1.5' fill='#ffcc00'/>" +
+      "<circle cx='100' cy='25' r='1.5' fill='#00ccff'/>" +
+      // 中間三張遠處會議椅背 (深藍灰)
+      "<rect x='61' y='46' width='10' height='12' rx='2' fill='#1c313a' stroke='#263238' stroke-width='0.8'/>" +
+      "<rect x='75' y='46' width='10' height='12' rx='2' fill='#1c313a' stroke='#263238' stroke-width='0.8'/>" +
+      "<rect x='89' y='46' width='10' height='12' rx='2' fill='#1c313a' stroke='#263238' stroke-width='0.8'/>" +
+      // 會議桌 (胡桃木色)
+      "<polygon points='16,90 144,90 112,54 48,54' fill='#5c4033' stroke='#8b5a2b' stroke-width='0.8'/>" +
+      // 近處兩張會議椅背 (左側亮橘紅，右側亮藍色)
+      "<rect x='22' y='64' width='14' height='26' rx='3' fill='#e65100' stroke='#ff6d00' stroke-width='0.8'/>" +
+      "<rect x='124' y='64' width='14' height='26' rx='3' fill='#0d47a1' stroke='#2979ff' stroke-width='0.8'/>" +
+      // 桌子中央的小麥克風圓盤 (帶有綠色指示燈)
+      "<circle cx='80' cy='62' r='3' fill='#2e3440'/>" +
+      "<circle cx='80' cy='62' r='0.8' fill='#00ff88'/>" +
+      "<circle cx='66' cy='68' r='1.8' fill='#2e3440'/>" +
+      "<circle cx='94' cy='68' r='1.8' fill='#2e3440'/>" +
       // AVer 浮水印
-      "<text x='80' y='33' fill='rgba(255,255,255,0.06)' font-family='Arial,sans-serif' font-size='8' font-weight='700' text-anchor='middle' letter-spacing='0.5'>AVer</text>" +
+      "<text x='80' y='42' fill='rgba(255,255,255,0.15)' font-family='Arial,sans-serif' font-size='6' font-weight='700' text-anchor='middle' letter-spacing='0.5'>AVer</text>" +
     "</svg>"
   );
 
