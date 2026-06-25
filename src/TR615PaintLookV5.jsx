@@ -542,9 +542,17 @@ const CAM_DEFAULTS = {
 function ExpSlider({ label, leftLabel, rightLabel, valueText, min, max, val, onChange, disabled, accent, id }) {
   const ac = accent || T.blue;
   return (
-    <div style={{ marginBottom: 10, opacity: disabled ? 0.4 : 1 }}>
+    <div style={{
+      width: "100%",
+      background: "rgba(255, 255, 255, 0.03)",
+      border: "1px solid rgba(255, 255, 255, 0.10)",
+      borderRadius: 8,
+      padding: "10px 12px",
+      boxSizing: "border-box",
+      opacity: disabled ? 0.4 : 1
+    }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 4 }}>
-        <span style={{ fontSize: 12.5, color: T.text }}>{label}</span>
+        <span style={{ fontSize: 12.5, color: T.text, fontWeight: 600 }}>{label}</span>
         <span style={{ fontFamily: fMono, fontSize: 12.5, color: disabled ? T.faint : ac }}>{valueText}</span>
       </div>
       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -562,11 +570,24 @@ function ExpSlider({ label, leftLabel, rightLabel, valueText, min, max, val, onC
 function CamCheck({ label, checked, onChange, disabled, id }) {
   return (
     <div id={id} onClick={() => { if (!disabled) onChange(!checked); }}
-      style={{ display: "flex", alignItems: "center", gap: 10, padding: "7px 12px", borderRadius: 6, border: `1px solid ${T.line}`, background: T.panel2, cursor: disabled ? "default" : "pointer", opacity: disabled ? 0.4 : 1, marginBottom: 8, userSelect: "none" }}>
-      <span style={{ width: 16, height: 16, borderRadius: 3, border: `1.5px solid ${checked ? T.blue : T.line2}`, background: checked ? T.blue : "transparent", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-        {checked && <span style={{ color: "#fff", fontSize: 11, fontWeight: 700, lineHeight: 1 }}>✓</span>}
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: 10,
+        padding: "8px 12px",
+        borderRadius: 8,
+        border: "1px solid rgba(255, 255, 255, 0.10)",
+        background: "rgba(255, 255, 255, 0.03)",
+        cursor: disabled ? "default" : "pointer",
+        opacity: disabled ? 0.4 : 1,
+        userSelect: "none",
+        boxSizing: "border-box",
+        flex: 1
+      }}>
+      <span style={{ width: 14, height: 14, borderRadius: 3, border: `1.5px solid ${checked ? T.blue : T.line2}`, background: checked ? T.blue : "transparent", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+        {checked && <span style={{ color: "#fff", fontSize: 10, fontWeight: 700, lineHeight: 1 }}>✓</span>}
       </span>
-      <span style={{ fontSize: 13, color: T.text }}>{label}</span>
+      <span style={{ fontSize: 12.5, color: T.text }}>{label}</span>
     </div>
   );
 }
@@ -3560,74 +3581,45 @@ export default function App() {
                         </div>
                         
                         {/* 欄 A */}
-                        <div style={{ flex: 1, minWidth: 0, padding: "0 10px", display: "flex", flexDirection: "column", gap: 10 }}>
-                          <div style={{
-                            width: "100%",
-                            background: "rgba(255, 255, 255, 0.03)",
-                            border: "1px solid rgba(255, 255, 255, 0.10)",
-                            borderRadius: 8,
-                            padding: "12px 14px",
-                            boxSizing: "border-box",
-                            display: "flex",
-                            flexDirection: "column",
-                            gap: 12
-                          }}>
-                            <ExpSlider id="aver-cam-slider-ev" label="Exposure Value" leftLabel="-4" rightLabel="4" valueText={cam.ev > 0 ? "+" + cam.ev : "" + cam.ev} min={-4} max={4} val={cam.ev} onChange={(v) => updCam("ev", v)} disabled={!en.ev} />
-                            <ExpSlider id="aver-cam-slider-shutter" label="Shutter Speed" leftLabel="1/1" rightLabel="1/10K" valueText={SHUTTER_LIST[cam.shutterIdx]} min={0} max={SHUTTER_LIST.length - 1} val={cam.shutterIdx} onChange={(v) => updCam("shutterIdx", v)} disabled={!en.shutter} />
-                            <ExpSlider id="aver-cam-slider-iris" label="Iris Level" leftLabel="0" rightLabel="F1.6" valueText={IRIS_LIST[cam.irisIdx]} min={0} max={IRIS_LIST.length - 1} val={cam.irisIdx} onChange={(v) => updCam("irisIdx", v)} disabled={!en.iris} />
-                          </div>
+                        <div style={{ flex: 1, minWidth: 0, padding: "0 10px", display: "flex", flexDirection: "column", gap: 8 }}>
+                          <ExpSlider id="aver-cam-slider-ev" label="Exposure Value" leftLabel="-4" rightLabel="4" valueText={cam.ev > 0 ? "+" + cam.ev : "" + cam.ev} min={-4} max={4} val={cam.ev} onChange={(v) => updCam("ev", v)} disabled={!en.ev} />
+                          <ExpSlider id="aver-cam-slider-shutter" label="Shutter Speed" leftLabel="1/1" rightLabel="1/10K" valueText={SHUTTER_LIST[cam.shutterIdx]} min={0} max={SHUTTER_LIST.length - 1} val={cam.shutterIdx} onChange={(v) => updCam("shutterIdx", v)} disabled={!en.shutter} />
+                          <ExpSlider id="aver-cam-slider-iris" label="Iris Level" leftLabel="0" rightLabel="F1.6" valueText={IRIS_LIST[cam.irisIdx]} min={0} max={IRIS_LIST.length - 1} val={cam.irisIdx} onChange={(v) => updCam("irisIdx", v)} disabled={!en.iris} />
                         </div>
 
                         {/* 欄 B */}
-                        <div style={{ flex: 1, minWidth: 0, padding: "0 10px", display: "flex", flexDirection: "column", gap: 10 }}>
-                          <div style={{
-                            width: "100%",
-                            background: "rgba(255, 255, 255, 0.03)",
-                            border: "1px solid rgba(255, 255, 255, 0.10)",
-                            borderRadius: 8,
-                            padding: "12px 14px",
-                            boxSizing: "border-box",
-                            display: "flex",
-                            flexDirection: "column",
-                            gap: 12
-                          }}>
-                            <ExpSlider id="aver-cam-slider-gain" label="Gain Level" leftLabel="0" rightLabel="42" valueText={cam.gain + "dB"} min={0} max={42} val={cam.gain} onChange={(v) => updCam("gain", v)} disabled={!en.gain} />
-                            <ExpSlider id="aver-cam-slider-gain-limit" label="Gain Limit Level" leftLabel="24" rightLabel="42" valueText={cam.gainLimit + "dB"} min={24} max={42} val={cam.gainLimit} onChange={(v) => updCam("gainLimit", v)} disabled={!en.gainLimit} />
-                            <ExpSlider id="aver-cam-slider-blc" label="BLC" leftLabel="Off" rightLabel="On" valueText={cam.blc ? "On" : "Off"} min={0} max={1} val={cam.blc} onChange={(v) => updCam("blc", v)} disabled={!en.blc} accent={T.amber} />
-                          </div>
+                        <div style={{ flex: 1, minWidth: 0, padding: "0 10px", display: "flex", flexDirection: "column", gap: 8 }}>
+                          <ExpSlider id="aver-cam-slider-gain" label="Gain Level" leftLabel="0" rightLabel="42" valueText={cam.gain + "dB"} min={0} max={42} val={cam.gain} onChange={(v) => updCam("gain", v)} disabled={!en.gain} />
+                          <ExpSlider id="aver-cam-slider-gain-limit" label="Gain Limit Level" leftLabel="24" rightLabel="42" valueText={cam.gainLimit + "dB"} min={24} max={42} val={cam.gainLimit} onChange={(v) => updCam("gainLimit", v)} disabled={!en.gainLimit} />
+                          <ExpSlider id="aver-cam-slider-blc" label="BLC" leftLabel="Off" rightLabel="On" valueText={cam.blc ? "On" : "Off"} min={0} max={1} val={cam.blc} onChange={(v) => updCam("blc", v)} disabled={!en.blc} accent={T.amber} />
                         </div>
 
                         {/* 欄 C */}
-                        <div style={{ flex: 1, minWidth: 0, padding: "0 10px", display: "flex", flexDirection: "column", gap: 10 }}>
+                        <div style={{ flex: 1, minWidth: 0, padding: "0 10px", display: "flex", flexDirection: "column", gap: 8 }}>
+                          <div style={{ display: "flex", gap: 8, width: "100%" }}>
+                            <CamCheck id="aver-cam-check-slow-shutter" label="Slow Shutter" checked={cam.slowShutter} onChange={(v) => updCam("slowShutter", v)} disabled={!en.slow} />
+                            <CamCheck id="aver-cam-check-wdr" label="WDR" checked={cam.wdr} onChange={(v) => updCam("wdr", v)} disabled={!en.wdr} />
+                          </div>
+                          <ExpSlider id="aver-cam-slider-bright-val" label="Bright Value" leftLabel="0" rightLabel="31" valueText={"" + cam.brightVal} min={0} max={31} val={cam.brightVal} onChange={(v) => updCam("brightVal", v)} disabled={!en.bright} />
+                          
                           <div style={{
                             width: "100%",
                             background: "rgba(255, 255, 255, 0.03)",
                             border: "1px solid rgba(255, 255, 255, 0.10)",
                             borderRadius: 8,
-                            padding: "12px 14px",
-                            boxSizing: "border-box",
-                            display: "flex",
-                            flexDirection: "column",
-                            gap: 12
+                            padding: "10px 12px",
+                            boxSizing: "border-box"
                           }}>
-                            <div style={{ display: "flex", gap: 12 }}>
-                              <CamCheck id="aver-cam-check-slow-shutter" label="Slow Shutter" checked={cam.slowShutter} onChange={(v) => updCam("slowShutter", v)} disabled={!en.slow} />
-                              <CamCheck id="aver-cam-check-wdr" label="WDR" checked={cam.wdr} onChange={(v) => updCam("wdr", v)} disabled={!en.wdr} />
-                            </div>
-                            <ExpSlider id="aver-cam-slider-bright-val" label="Bright Value" leftLabel="0" rightLabel="31" valueText={"" + cam.brightVal} min={0} max={31} val={cam.brightVal} onChange={(v) => updCam("brightVal", v)} disabled={!en.bright} />
-                            
-                            <div style={{ marginTop: 2 }}>
-                              <div style={{ fontSize: 13, color: T.text, marginBottom: 6 }}>ND Filter</div>
-                              <select id="aver-cam-select-nd-filter" value={cam.ndFilter} onChange={(e) => updCam("ndFilter", e.target.value)}
-                                style={{ width: "100%", padding: "6px 10px", fontSize: 13, borderRadius: 6, border: `1px solid ${T.line2}`, background: T.panel2, color: T.text, fontFamily: fUI, cursor: "pointer" }}>
-                                <option value="nd128">ND 1/128</option>
-                                <option value="nd16">ND 1/16</option>
-                                <option value="nd4">ND 1/4</option>
-                                <option value="clear">ND Clear</option>
-                              </select>
-                            </div>
+                            <div style={{ fontSize: 12.5, color: T.text, marginBottom: 6, fontWeight: 600 }}>ND Filter</div>
+                            <select id="aver-cam-select-nd-filter" value={cam.ndFilter} onChange={(e) => updCam("ndFilter", e.target.value)}
+                              style={{ width: "100%", padding: "6px 10px", fontSize: 13, borderRadius: 6, border: `1px solid ${T.line2}`, background: T.panel2, color: T.text, fontFamily: fUI, cursor: "pointer" }}>
+                              <option value="nd128">ND 1/128</option>
+                              <option value="nd16">ND 1/16</option>
+                              <option value="nd4">ND 1/4</option>
+                              <option value="clear">ND Clear</option>
+                            </select>
                           </div>
-                          <div style={{ display: "flex", justifyContent: "flex-end" }}>
+                          <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 4 }}>
                             <button id="aver-cam-btn-exp-default" onClick={() => setCam({ ...CAM_DEFAULTS, tab: "exp" })}
                               style={{ padding: "6px 16px", fontSize: 12, cursor: "pointer", borderRadius: 6, border: `1px solid ${T.line2}`, background: T.panel2, color: T.text, fontFamily: fUI }}>
                               Default
@@ -3639,80 +3631,71 @@ export default function App() {
                       /* ===== Image Process 分頁(對照實機) ===== */
                       <div style={{ display: "flex", gap: 0, padding: "10px 0", alignItems: "flex-start", flex: 1, minHeight: 0, overflow: "hidden", boxSizing: "border-box" }}>
                         {/* 第 1 欄:White Balance + R/B Gain + One Push */}
-                        <div style={{ flex: 1, minWidth: 0, padding: "0 14px 0 10px", borderRight: `1px solid ${T.line}`, display: "flex", flexDirection: "column", gap: 10 }}>
+                        <div style={{ flex: 1, minWidth: 0, padding: "0 14px 0 10px", borderRight: `1px solid ${T.line}`, display: "flex", flexDirection: "column", gap: 8 }}>
                           <div style={{
                             width: "100%",
                             background: "rgba(255, 255, 255, 0.03)",
                             border: "1px solid rgba(255, 255, 255, 0.10)",
                             borderRadius: 8,
-                            padding: "12px 14px",
-                            boxSizing: "border-box",
-                            display: "flex",
-                            flexDirection: "column",
-                            gap: 10
+                            padding: "10px 12px",
+                            boxSizing: "border-box"
                           }}>
-                            <div style={{ fontSize: 12, color: T.faint, fontWeight: 600 }}>White Balance</div>
+                            <div style={{ fontSize: 12.5, color: T.text, marginBottom: 6, fontWeight: 600 }}>White Balance</div>
                             <select id="aver-cam-select-wb-mode" value={cam.wbMode} onChange={(e) => updCam("wbMode", e.target.value)}
-                              style={{ width: "100%", padding: "7px 10px", fontSize: 13, borderRadius: 6, border: `1px solid ${T.line2}`, background: T.panel2, color: T.text, fontFamily: fUI, cursor: "pointer" }}>
+                              style={{ width: "100%", padding: "6px 10px", fontSize: 13, borderRadius: 6, border: `1px solid ${T.line2}`, background: T.panel2, color: T.text, fontFamily: fUI, cursor: "pointer" }}>
                               <option value="auto">AWB</option>
                               <option value="indoor">Indoor</option>
                               <option value="outdoor">Outdoor</option>
                               <option value="onepush">One Push</option>
                               <option value="manual">Manual</option>
                             </select>
-                            <div style={{ display: "flex", gap: 12 }}>
-                              <div style={{ flex: 1 }}>
-                                <ExpSlider id="aver-cam-slider-r-gain" label="R Gain" leftLabel="0" rightLabel="255" valueText={"" + cam.rGain} min={0} max={255} val={cam.rGain} onChange={(v) => updCam("rGain", v)} disabled={cam.wbMode === "auto"} accent={"#ff6b6b"} />
-                              </div>
-                              <div style={{ flex: 1 }}>
-                                <ExpSlider id="aver-cam-slider-b-gain" label="B Gain" leftLabel="0" rightLabel="255" valueText={"" + cam.bGain} min={0} max={255} val={cam.bGain} onChange={(v) => updCam("bGain", v)} disabled={cam.wbMode === "auto"} />
-                              </div>
+                          </div>
+
+                          {cam.wbMode !== "auto" && (
+                            <div style={{ display: "flex", gap: 8, width: "100%" }}>
+                              <div style={{ flex: 1 }}><ExpSlider id="aver-cam-slider-r-gain" label="R Gain" leftLabel="0" rightLabel="255" valueText={"" + cam.rGain} min={0} max={255} val={cam.rGain} onChange={(v) => updCam("rGain", v)} accent={"#ff6b6b"} /></div>
+                              <div style={{ flex: 1 }}><ExpSlider id="aver-cam-slider-b-gain" label="B Gain" leftLabel="0" rightLabel="255" valueText={"" + cam.bGain} min={0} max={255} val={cam.bGain} onChange={(v) => updCam("bGain", v)} /></div>
                             </div>
-                            <div style={{ fontSize: 12, color: T.faint, fontWeight: 600, marginTop: 2 }}>One Push</div>
-                            <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
-                              <button id="aver-cam-btn-onepush-set" disabled={cam.wbMode !== "onepush"}
-                                style={{ padding: "7px 14px", fontSize: 12.5, cursor: cam.wbMode === "onepush" ? "pointer" : "not-allowed", borderRadius: 6, border: `1px solid ${T.line2}`, background: T.panel2, color: cam.wbMode === "onepush" ? T.text : T.faint, fontFamily: fUI, flexShrink: 0 }}>
-                                Set
-                              </button>
-                              <span style={{ fontSize: 11, color: T.faint, lineHeight: 1.35 }}>If AWB is 'One push', press SET while framing a white paper</span>
-                            </div>
+                          )}
+
+                          <div style={{
+                            width: "100%",
+                            background: "rgba(255, 255, 255, 0.03)",
+                            border: "1px solid rgba(255, 255, 255, 0.10)",
+                            borderRadius: 8,
+                            padding: "10px 12px",
+                            boxSizing: "border-box",
+                            display: "flex",
+                            gap: 10,
+                            alignItems: "center"
+                          }}>
+                            <button id="aver-cam-btn-onepush-set" disabled={cam.wbMode !== "onepush"}
+                              style={{ padding: "6px 14px", fontSize: 12, cursor: cam.wbMode === "onepush" ? "pointer" : "not-allowed", borderRadius: 6, border: `1px solid ${T.line2}`, background: T.panel2, color: cam.wbMode === "onepush" ? T.text : T.faint, fontFamily: fUI, flexShrink: 0 }}>
+                              Set
+                            </button>
+                            <span style={{ fontSize: 11, color: T.faint, lineHeight: 1.3 }}>AWB 'One push' set helper</span>
                           </div>
                         </div>
 
                         {/* 第 2 欄:Saturation / Contrast / Sharpness(實機範圍) */}
-                        <div style={{ flex: 1, minWidth: 0, padding: "0 14px", borderRight: `1px solid ${T.line}`, display: "flex", flexDirection: "column", gap: 10 }}>
-                          <div style={{
-                            width: "100%",
-                            background: "rgba(255, 255, 255, 0.03)",
-                            border: "1px solid rgba(255, 255, 255, 0.10)",
-                            borderRadius: 8,
-                            padding: "12px 14px",
-                            boxSizing: "border-box",
-                            display: "flex",
-                            flexDirection: "column",
-                            gap: 12
-                          }}>
-                            <ExpSlider id="aver-cam-slider-saturation" label="Saturation" leftLabel="0" rightLabel="10" valueText={"" + cam.saturation} min={0} max={10} val={cam.saturation} onChange={(v) => updCam("saturation", v)} />
-                            <ExpSlider id="aver-cam-slider-contrast" label="Contrast" leftLabel="0" rightLabel="4" valueText={"" + cam.contrast} min={0} max={4} val={cam.contrast} onChange={(v) => updCam("contrast", v)} />
-                            <ExpSlider id="aver-cam-slider-sharpness" label="Sharpness" leftLabel="0" rightLabel="3" valueText={"" + cam.sharpness} min={0} max={3} val={cam.sharpness} onChange={(v) => updCam("sharpness", v)} />
-                          </div>
+                        <div style={{ flex: 1, minWidth: 0, padding: "0 14px", borderRight: `1px solid ${T.line}`, display: "flex", flexDirection: "column", gap: 8 }}>
+                          <ExpSlider id="aver-cam-slider-saturation" label="Saturation" leftLabel="0" rightLabel="10" valueText={"" + cam.saturation} min={0} max={10} val={cam.saturation} onChange={(v) => updCam("saturation", v)} />
+                          <ExpSlider id="aver-cam-slider-contrast" label="Contrast" leftLabel="0" rightLabel="4" valueText={"" + cam.contrast} min={0} max={4} val={cam.contrast} onChange={(v) => updCam("contrast", v)} />
+                          <ExpSlider id="aver-cam-slider-sharpness" label="Sharpness" leftLabel="0" rightLabel="3" valueText={"" + cam.sharpness} min={0} max={3} val={cam.sharpness} onChange={(v) => updCam("sharpness", v)} />
                         </div>
 
                         {/* 第 3 欄:Noise Filter + Mirror/Flip/LDC + Default */}
-                        <div style={{ flex: 1, minWidth: 0, padding: "0 10px 0 14px", display: "flex", flexDirection: "column", gap: 10 }}>
+                        <div style={{ flex: 1, minWidth: 0, padding: "0 10px 0 14px", display: "flex", flexDirection: "column", gap: 8 }}>
                           <div style={{
                             width: "100%",
                             background: "rgba(255, 255, 255, 0.03)",
                             border: "1px solid rgba(255, 255, 255, 0.10)",
                             borderRadius: 8,
-                            padding: "12px 14px",
-                            boxSizing: "border-box",
-                            display: "flex",
-                            flexDirection: "column",
-                            gap: 10
+                            padding: "10px 12px",
+                            boxSizing: "border-box"
                           }}>
-                            <div style={{ fontSize: 12, color: T.faint, fontWeight: 600 }}>Noise Filter</div>
-                            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4, gap: 4 }}>
+                            <div style={{ fontSize: 12.5, color: T.text, marginBottom: 6, fontWeight: 600 }}>Noise Filter</div>
+                            <div style={{ display: "flex", justifyContent: "space-between", gap: 4 }}>
                               {[["off", "Off"], ["low", "Low"], ["medium", "Med"], ["high", "High"]].map(([id, lb]) => (
                                 <div id={`aver-cam-radio-noise-${id}`} key={id} onClick={() => updCam("noiseFilter", id)} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 5, cursor: "pointer", flex: 1 }}>
                                   <span style={{ width: 14, height: 14, borderRadius: "50%", border: `1.5px solid ${cam.noiseFilter === id ? T.blue : T.line2}`, display: "flex", alignItems: "center", justifyContent: "center" }}>
@@ -3722,13 +3705,15 @@ export default function App() {
                                 </div>
                               ))}
                             </div>
-                            <div style={{ display: "flex", gap: 10 }}>
-                              <CamCheck id="aver-cam-check-mirror" label="Mirror" checked={cam.mirror} onChange={(v) => updCam("mirror", v)} />
-                              <CamCheck id="aver-cam-check-flip" label="Flip" checked={cam.flip} onChange={(v) => updCam("flip", v)} />
-                              <CamCheck id="aver-cam-check-ldc" label="LDC" checked={cam.ldc} onChange={(v) => updCam("ldc", v)} />
-                            </div>
                           </div>
-                          <div style={{ display: "flex", justifyContent: "flex-end" }}>
+                          
+                          <div style={{ display: "flex", gap: 8, width: "100%" }}>
+                            <CamCheck id="aver-cam-check-mirror" label="Mirror" checked={cam.mirror} onChange={(v) => updCam("mirror", v)} />
+                            <CamCheck id="aver-cam-check-flip" label="Flip" checked={cam.flip} onChange={(v) => updCam("flip", v)} />
+                            <CamCheck id="aver-cam-check-ldc" label="LDC" checked={cam.ldc} onChange={(v) => updCam("ldc", v)} />
+                          </div>
+                          
+                          <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 4 }}>
                             <button id="aver-cam-btn-img-default" onClick={() => setCam({ ...CAM_DEFAULTS, tab: "img" })}
                               style={{ padding: "6px 16px", fontSize: 12, cursor: "pointer", borderRadius: 6, border: `1px solid ${T.line2}`, background: T.panel2, color: T.text, fontFamily: fUI }}>
                               Default
