@@ -3560,16 +3560,6 @@ export default function App() {
                         </div>
                         {/* 欄 A */}
                         <div style={{ ...colStyle, padding: "0 18px" }}>
-                          <div style={{ marginBottom: 15 }}>
-                            <div style={{ fontSize: 13, color: T.text, marginBottom: 6 }}>ND Filter</div>
-                            <select id="aver-cam-select-nd-filter" value={cam.ndFilter} onChange={(e) => updCam("ndFilter", e.target.value)}
-                              style={{ width: "100%", padding: "8px 10px", fontSize: 13, borderRadius: 6, border: `1px solid ${T.line2}`, background: T.panel2, color: T.text, fontFamily: fUI, cursor: "pointer" }}>
-                              <option value="nd128">ND 1/128</option>
-                              <option value="nd16">ND 1/16</option>
-                              <option value="nd4">ND 1/4</option>
-                              <option value="clear">ND Clear</option>
-                            </select>
-                          </div>
                           <ExpSlider id="aver-cam-slider-ev" label="Exposure Value" leftLabel="-4" rightLabel="4" valueText={cam.ev > 0 ? "+" + cam.ev : "" + cam.ev} min={-4} max={4} val={cam.ev} onChange={(v) => updCam("ev", v)} disabled={!en.ev} />
                           <ExpSlider id="aver-cam-slider-shutter" label="Shutter Speed" leftLabel="1/1" rightLabel="1/10K" valueText={SHUTTER_LIST[cam.shutterIdx]} min={0} max={SHUTTER_LIST.length - 1} val={cam.shutterIdx} onChange={(v) => updCam("shutterIdx", v)} disabled={!en.shutter} />
                           <ExpSlider id="aver-cam-slider-iris" label="Iris Level" leftLabel="0" rightLabel="F1.6" valueText={IRIS_LIST[cam.irisIdx]} min={0} max={IRIS_LIST.length - 1} val={cam.irisIdx} onChange={(v) => updCam("irisIdx", v)} disabled={!en.iris} />
@@ -3586,6 +3576,17 @@ export default function App() {
                             <CamCheck id="aver-cam-check-slow-shutter" label="Slow Shutter" checked={cam.slowShutter} onChange={(v) => updCam("slowShutter", v)} disabled={!en.slow} />
                             <CamCheck id="aver-cam-check-wdr" label="WDR" checked={cam.wdr} onChange={(v) => updCam("wdr", v)} disabled={!en.wdr} />
                             <ExpSlider id="aver-cam-slider-bright-val" label="Bright Value" leftLabel="0" rightLabel="31" valueText={"" + cam.brightVal} min={0} max={31} val={cam.brightVal} onChange={(v) => updCam("brightVal", v)} disabled={!en.bright} />
+                            
+                            <div style={{ marginTop: 12 }}>
+                              <div style={{ fontSize: 13, color: T.text, marginBottom: 6 }}>ND Filter</div>
+                              <select id="aver-cam-select-nd-filter" value={cam.ndFilter} onChange={(e) => updCam("ndFilter", e.target.value)}
+                                style={{ width: "100%", padding: "8px 10px", fontSize: 13, borderRadius: 6, border: `1px solid ${T.line2}`, background: T.panel2, color: T.text, fontFamily: fUI, cursor: "pointer" }}>
+                                <option value="nd128">ND 1/128</option>
+                                <option value="nd16">ND 1/16</option>
+                                <option value="nd4">ND 1/4</option>
+                                <option value="clear">ND Clear</option>
+                              </select>
+                            </div>
                           </div>
                           <div style={{ display: "flex", justifyContent: "flex-end" }}>
                             <button id="aver-cam-btn-exp-default" onClick={() => setCam({ ...CAM_DEFAULTS, tab: "exp" })}
