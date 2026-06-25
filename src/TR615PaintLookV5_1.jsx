@@ -1838,7 +1838,7 @@ export default function App() {
   const loadStandard = () => { 
     setSt(JSON.parse(JSON.stringify(DEF))); 
     setActiveScene("std"); 
-    flash("Loaded AVer (Factory Default)"); 
+    flash("Loaded Default"); 
   };
   
   const saveNewScene = () => {
@@ -2635,7 +2635,7 @@ export default function App() {
   );
   const paintSceneTiles = () => (
     <>
-      <SceneTile thumb={STD_FIXED_THUMB} name="AVer" factory active={activeScene === "std"} dirty={isDirty} onLoad={loadStandard} />
+      <SceneTile thumb={STD_FIXED_THUMB} name="Default" factory active={activeScene === "std"} dirty={isDirty} onLoad={loadStandard} />
       {scenes.map((s) => (
         <SceneTile key={s.id} thumb={s.thumb} name={s.name} remark={s.remark} active={activeScene === s.id} dirty={isDirty} onLoad={() => loadScene(s)} onEdit={() => { setEditingScene(s.id); setEdName(s.name); setEdRemark(s.remark || ""); setSaveOpen(false); }} onDelete={() => setDeletingScene(s)} />
       ))}
@@ -2666,7 +2666,7 @@ export default function App() {
     <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
       <span style={{ fontSize: 14, fontWeight: 600, color: T.dim }}>Current Scene: </span>
       <span style={{ fontSize: 14, fontWeight: 700, color: activeScene === "std" ? T.blue : T.text, background: activeScene === "std" ? "rgba(30,155,240,0.1)" : "rgba(255,255,255,0.06)", padding: "4px 10px", borderRadius: 6, border: `1px solid ${activeScene === "std" ? "rgba(30,155,240,0.2)" : T.line}` }}>
-        {activeScene === "std" ? "AVer (Factory Default)" : (scenes.find((x) => x.id === activeScene)?.name || "Custom Scene")}
+        {activeScene === "std" ? "Default" : (scenes.find((x) => x.id === activeScene)?.name || "Custom Scene")}
       </span>
       {isDirty && (<span style={{ fontSize: 14, fontWeight: 600, color: T.amber, background: "rgba(245,166,35,0.1)", padding: "3px 8px", borderRadius: 4, border: `1px solid rgba(245,166,35,0.2)` }}>● Modified, Unsaved</span>)}
     </div>
@@ -3211,7 +3211,7 @@ export default function App() {
                       borderRadius: 6,
                       border: `1px solid ${activeScene === "std" ? "rgba(30,155,240,0.2)" : T.line}`
                     }}>
-                      {activeScene === "std" ? "AVer (Factory Default)" : (scenes.find((x) => x.id === activeScene)?.name || "Custom Scene")}
+                      {activeScene === "std" ? "Default" : (scenes.find((x) => x.id === activeScene)?.name || "Custom Scene")}
                     </span>
                     {/* [2026-06] 同排放不下,故「Modified, Unsaved」改用 icon 表示(與卡片上的 dirty 黃標一致),hover 顯示完整文字 */}
                     {isDirty && (
@@ -3247,7 +3247,7 @@ export default function App() {
                   alignItems: "start", 
                   alignContent: "start" 
                 }}>
-                  <SceneTile thumb={STD_FIXED_THUMB} name="AVer" factory active={activeScene === "std"} dirty={isDirty} onLoad={loadStandard} />
+                  <SceneTile thumb={STD_FIXED_THUMB} name="Default" factory active={activeScene === "std"} dirty={isDirty} onLoad={loadStandard} />
                   {scenes.map((s) => (
                     <SceneTile key={s.id} thumb={s.thumb} name={s.name} remark={s.remark} active={activeScene === s.id} dirty={isDirty}
                       onLoad={() => loadScene(s)}
