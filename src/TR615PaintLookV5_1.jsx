@@ -1874,7 +1874,9 @@ export default function App() {
   
   const deleteScene = (s) => { 
     setScenes((sc) => sc.filter((x) => x.id !== s.id)); 
-    if (activeScene === s.id) setActiveScene(null); 
+    if (activeScene === s.id) {
+      loadStandard();
+    }
     flash(`Deleted "${s.name}"`); 
   };
 
