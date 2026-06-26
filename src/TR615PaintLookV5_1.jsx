@@ -2565,6 +2565,11 @@ export default function App() {
         <div id="aver-control-params-knee" style={{ display: "flex", flexDirection: "column", flex: 1, minHeight: 0 }}>
           <BlockHeader 
             title="Knee" 
+            right={
+              <div style={{ width: 80, display: "flex" }}>
+                <MiniBtn onClick={() => setSt((s) => ({ ...s, autoKnee: false, kneePoint: 95, kneeSlope: 0 }))}>Default</MiniBtn>
+              </div>
+            }
           />
           <div style={{ display: "flex", gap: 24, alignItems: "flex-start", flex: 1, minHeight: 0, padding: "8px 0 16px", boxSizing: "border-box" }}>
             <div style={{
@@ -2594,7 +2599,14 @@ export default function App() {
     if (block === "black") {
       return (
         <div id="aver-control-params-black" style={{ display: "flex", flexDirection: "column", flex: 1, minHeight: 0 }}>
-          <BlockHeader title="Black Level" />
+          <BlockHeader 
+            title="Black Level" 
+            right={
+              <div style={{ width: 80, display: "flex" }}>
+                <MiniBtn onClick={() => setSt((s) => ({ ...s, black: 0, blackGamma: 0 }))}>Default</MiniBtn>
+              </div>
+            }
+          />
           <div style={{ display: "flex", gap: 24, alignItems: "flex-start", flex: 1, minHeight: 0, padding: "8px 0 16px", boxSizing: "border-box" }}>
             <div style={{
               width: "100%",
